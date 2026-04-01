@@ -1,9 +1,7 @@
 import type { Command } from "commander";
 
 export function registerBacklogCli(program: Command) {
-  const cmd = program
-    .command("backlog")
-    .description("Manage project task backlogs");
+  const cmd = program.command("backlog").description("Manage project task backlogs");
 
   cmd
     .command("init")
@@ -39,9 +37,9 @@ export function registerBacklogCli(program: Command) {
           taskId,
           title: opts.title as string,
           description: (opts.description as string) || "",
-          severity: opts.severity as any,
+          severity: opts.severity,
           status: "notStarted",
-          complexity: opts.complexity as any,
+          complexity: opts.complexity,
           touches,
           agentRole: null,
           createdAt: new Date().toISOString(),
@@ -69,12 +67,12 @@ export function registerBacklogCli(program: Command) {
       try {
         let tasks = dbInfo.listBacklogTasks();
         if (opts.status) {
-          tasks = tasks.filter((t: any) => t.status === opts.status);
+          tasks = tasks.filter((t: { status: string }) => t.status === opts.status);
         }
         if (opts.severity) {
-          tasks = tasks.filter((t: any) => t.severity === opts.severity);
+          tasks = tasks.filter((t: { severity: string }) => t.severity === opts.severity);
         }
-        
+
         if (opts.json) {
           console.log(JSON.stringify(tasks, null, 2));
         } else {
@@ -122,13 +120,23 @@ export function registerBacklogCli(program: Command) {
           console.error(`Task ${taskId} not found`);
           return;
         }
-        if (opts.status) task.status = opts.status as any;
-        if (opts.severity) task.severity = opts.severity as any;
-        if (opts.complexity) task.complexity = opts.complexity as any;
-        if (opts.title) task.title = opts.title as string;
+        if (opts.status) {
+          task.status = opts.status;
+        }
+        if (opts.severity) {
+          task.severity = opts.severity;
+        }
+        if (opts.complexity) {
+          task.complexity = opts.complexity;
+        }
+        if (opts.title) {
+          task.title = opts.title as string;
+        }
         task.updatedAt = new Date().toISOString();
-        if (opts.status === "done") task.completedAt = new Date().toISOString();
-        
+        if (opts.status === "done") {
+          task.completedAt = new Date().toISOString();
+        }
+
         dbInfo.updateBacklogTask(task);
         console.log(`Updated ${taskId}`);
       } finally {
