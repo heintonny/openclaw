@@ -172,4 +172,46 @@ export function registerBacklogCli(program: Command) {
         dbInfo.db.close();
       }
     });
+
+  cmd
+    .command("export")
+    .description("Export backlog and selfimprove to markdown files")
+    .option("--path <path>", "Repository path (default: cwd)")
+    .action(async (opts) => {
+      const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
+      const { exportBacklog, exportSelfImprove } = await import("../backlog/export.js");
+      const repoPath = (opts.path as string) || process.cwd();
+      const dbPath = resolveProjectSqlitePath(repoPath);
+      const db = openProjectDatabase(dbPath);
+      try {
+        const tasks = db.listBacklogTasks();
+        // Collect all deps
+        const allDeps: Array<{ taskId: string; dependsOn: string }> = [];
+        for (const t of tasks) {
+          allDeps.push(...db.listDependencies(t.taskId));
+        }
+        const backlogPath = exportBacklog(repoPath, tasks, allDeps);
+        console.log(`Exported backlog to ${backlogPath}`);
+
+        const entries = db.listSelfImprove();
+        if (entries.length > 0) {
+          const siPath = exportSelfImprove(repoPath, entries);
+          console.log(`Exported ${entries.length} selfimprove entries to ${siPath}`);
+        }
+      } finally {
+        db.close();
+      }
+    });
+
+  cmd
+    .command("migrate")
+    .description("Migrate TASKS.json to SQLite backlog")
+    .option("--path <path>", "Repository path (default: cwd)")
+    .option("--file <file>", "Path to TASKS.json (auto-detected if omitted)")
+    .action(async (opts) => {
+      const { migrateFromTasksJson } = await import("../backlog/migrate.js");
+      const repoPath = (opts.path as string) || process.cwd();
+      const result = migrateFromTasksJson(repoPath, opts.file as string | undefined);
+      console.log(`Migration complete: ${result.imported} imported, ${result.skipped} skipped`);
+    });
 }
