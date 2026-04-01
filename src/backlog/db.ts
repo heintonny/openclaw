@@ -239,5 +239,74 @@ export function openProjectDatabase(sqlitePath: string) {
     hasTable(tableName: string): boolean {
       return !!statements.checkTableExists.get(tableName);
     },
+    addTask(params: {
+      taskId: string;
+      title: string;
+      description?: string;
+      severity?: string;
+      complexity?: string;
+      touches?: string[];
+      agentRole?: string;
+    }) {
+      const now = new Date().toISOString();
+      this.addBacklogTask({
+        taskId: params.taskId,
+        title: params.title,
+        description: params.description || "",
+        status: "notStarted",
+        severity: (params.severity || "medium") as BacklogTask["severity"],
+        complexity: (params.complexity || "m") as BacklogTask["complexity"],
+        touches: params.touches || [],
+        agentRole: params.agentRole || null,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+      });
+    },
+    updateTask(taskId: string, updates: Record<string, string>) {
+      const existing = this.getBacklogTask(taskId);
+      if (!existing) {
+        throw new Error(`Task ${taskId} not found`);
+      }
+      const updated: BacklogTask = {
+        ...existing,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+      if (updates.status === "done" && !existing.completedAt) {
+        updated.completedAt = new Date().toISOString();
+      }
+      this.updateBacklogTask(updated);
+    },
+    getSummary(): Record<string, number> {
+      const tasks = this.listBacklogTasks();
+      const summary: Record<string, number> = {};
+      for (const t of tasks) {
+        summary[t.status] = (summary[t.status] || 0) + 1;
+      }
+      summary.total = tasks.length;
+      return summary;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    listTasks(filters?: { status?: string; severity?: string }): Record<string, unknown>[] {
+      let tasks = this.listBacklogTasks();
+      if (filters?.status) {
+        tasks = tasks.filter((t) => t.status === filters.status);
+      }
+      if (filters?.severity) {
+        tasks = tasks.filter((t) => t.severity === filters.severity);
+      }
+      return tasks.map((t) => ({
+        task_id: t.taskId,
+        title: t.title,
+        status: t.status,
+        severity: t.severity,
+        complexity: t.complexity,
+        description: t.description,
+      }));
+    },
+    close() {
+      db.close();
+    },
   };
 }
