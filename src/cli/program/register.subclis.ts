@@ -294,6 +294,33 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "backlog",
+    description: "Manage project task backlogs",
+    hasSubcommands: true,
+    register: async (program) => {
+      const mod = await import("../backlog-cli.js");
+      mod.registerBacklogCli(program);
+    },
+  },
+  {
+    name: "project",
+    description: "Manage multi-repo project registrations",
+    hasSubcommands: true,
+    register: async (program) => {
+      const mod = await import("../project-cli.js");
+      mod.registerProjectCli(program);
+    },
+  },
+  {
+    name: "selfimprove",
+    description: "Track agent lessons and self-improvement",
+    hasSubcommands: true,
+    register: async (program) => {
+      const mod = await import("../selfimprove-cli.js");
+      mod.registerSelfimproveCli(program);
+    },
+  },
+  {
     name: "update",
     description: "Update OpenClaw and inspect update channel status",
     hasSubcommands: true,

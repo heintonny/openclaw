@@ -124,6 +124,21 @@ export const SUB_CLI_DESCRIPTORS = [
     hasSubcommands: true,
   },
   {
+    name: "backlog",
+    description: "Manage project task backlogs",
+    hasSubcommands: true,
+  },
+  {
+    name: "project",
+    description: "Manage multi-repo project registrations",
+    hasSubcommands: true,
+  },
+  {
+    name: "selfimprove",
+    description: "Track agent lessons and self-improvement",
+    hasSubcommands: true,
+  },
+  {
     name: "update",
     description: "Update OpenClaw and inspect update channel status",
     hasSubcommands: true,
