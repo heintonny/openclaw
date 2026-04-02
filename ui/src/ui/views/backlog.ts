@@ -102,7 +102,7 @@ let _batchPlanDismissed = false;
 export function renderBacklog(props: BacklogProps) {
   // Auto-select if only one project and none selected
   if (!props.selectedProjectId && props.projects && props.projects.length === 1) {
-    props.onAutoSelectProject(props.projects[0].projectId);
+    props.onAutoSelectProject(props.projects[0].id ?? props.projects[0].projectId);
     return html`<section class="card"><p>Loading...</p></section>`;
   }
 

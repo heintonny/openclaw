@@ -924,6 +924,7 @@ export function renderApp(state: AppViewState) {
                 onSelectProject: (projectId) => {
                   state.projectsSelectedId = projectId;
                   state.setTab("backlog" as import("./navigation.ts").Tab);
+                  void loadBacklog(state);
                 },
               }),
             )

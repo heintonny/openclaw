@@ -298,6 +298,7 @@ export function openProjectDatabase(sqlitePath: string) {
       }
       return tasks.map((t) => ({
         task_id: t.taskId,
+        taskId: t.taskId,
         title: t.title,
         status: t.status,
         severity: t.severity,

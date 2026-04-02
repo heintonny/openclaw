@@ -238,8 +238,19 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "projects") {
     await loadProjects(host as unknown as OpenClawApp);
   }
-  if (host.tab === "backlog" && (host as unknown as OpenClawApp).projectsSelectedId) {
-    await loadBacklog(host as unknown as OpenClawApp);
+  if (host.tab === "backlog") {
+    const app = host as unknown as OpenClawApp;
+    // Ensure projects list is loaded for auto-select
+    if (app.projectsList.length === 0) {
+      await loadProjects(app);
+    }
+    // Auto-select if only one project
+    if (!app.projectsSelectedId && app.projectsList.length === 1) {
+      app.projectsSelectedId = app.projectsList[0].id ?? app.projectsList[0].projectId;
+    }
+    if (app.projectsSelectedId) {
+      await loadBacklog(app);
+    }
   }
   if (host.tab === "skills") {
     await loadSkills(host as unknown as OpenClawApp);
