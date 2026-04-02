@@ -20,6 +20,7 @@ export const en: TranslationMap = {
   nav: {
     chat: "Chat",
     control: "Control",
+    projects: "PROJECTS",
     agent: "Agent",
     settings: "Settings",
     expand: "Expand sidebar",
@@ -45,6 +46,9 @@ export const en: TranslationMap = {
     aiAgents: "AI & Agents",
     debug: "Debug",
     logs: "Logs",
+    projects: "Projects",
+    backlog: "Backlog",
+    pipeline: "Pipeline",
   },
   subtitles: {
     agents: "Workspaces, tools, identities.",
@@ -65,6 +69,9 @@ export const en: TranslationMap = {
     aiAgents: "Agents, models, skills, tools, memory, session.",
     debug: "Snapshots, events, RPC.",
     logs: "Live gateway logs.",
+    projects: "Multi-repo project registry",
+    backlog: "Task management and batch planning",
+    pipeline: "Agent execution pipeline",
   },
   overview: {
     access: {

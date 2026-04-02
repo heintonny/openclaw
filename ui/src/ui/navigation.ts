@@ -7,6 +7,7 @@ export const TAB_GROUPS = [
     label: "control",
     tabs: ["overview", "channels", "instances", "sessions", "usage", "cron"],
   },
+  { label: "projects", tabs: ["projects", "backlog", "pipeline"] },
   { label: "agent", tabs: ["agents", "skills", "nodes"] },
   {
     label: "settings",
@@ -31,6 +32,9 @@ export type Tab =
   | "sessions"
   | "usage"
   | "cron"
+  | "projects"
+  | "backlog"
+  | "pipeline"
   | "skills"
   | "nodes"
   | "chat"
@@ -51,6 +55,9 @@ const TAB_PATHS: Record<Tab, string> = {
   sessions: "/sessions",
   usage: "/usage",
   cron: "/cron",
+  projects: "/projects",
+  backlog: "/backlog",
+  pipeline: "/pipeline",
   skills: "/skills",
   nodes: "/nodes",
   chat: "/chat",
@@ -147,6 +154,12 @@ export function inferBasePathFromPathname(pathname: string): string {
 
 export function iconForTab(tab: Tab): IconName {
   switch (tab) {
+    case "projects":
+      return "folder";
+    case "backlog":
+      return "fileText";
+    case "pipeline":
+      return "loader";
     case "agents":
       return "folder";
     case "chat":

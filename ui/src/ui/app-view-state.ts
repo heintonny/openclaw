@@ -156,6 +156,33 @@ export type AppViewState = {
   presenceEntries: PresenceEntry[];
   presenceError: string | null;
   presenceStatus: string | null;
+  projectsLoading: boolean;
+  projectsList: Array<{
+    projectId: string;
+    repoPaths: string[];
+    taskSummary?: Record<string, number>;
+  }>;
+  projectsError: string | null;
+  projectsSelectedId: string | null;
+  backlogLoading: boolean;
+  backlogTasks: Array<{
+    taskId: string;
+    title: string;
+    description: string;
+    status: string;
+    severity: string;
+    complexity: string;
+    touches: string[];
+    agentRole: string | null;
+    createdAt: string;
+    updatedAt: string;
+    completedAt: string | null;
+  }>;
+  backlogError: string | null;
+  backlogStatusFilter: string | null;
+  backlogSeverityFilter: string | null;
+  backlogAddFormVisible: boolean;
+  backlogBatchPlan: Array<{ taskId: string; title: string; severity: string }>;
   agentsLoading: boolean;
   agentsList: AgentsListResult | null;
   agentsError: string | null;

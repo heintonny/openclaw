@@ -29,6 +29,12 @@ import {
   refreshVisibleToolsEffectiveForCurrentSession,
   saveAgentsConfig,
 } from "./controllers/agents.ts";
+import {
+  loadBacklog,
+  addBacklogTask,
+  updateBacklogTask,
+  planBatch,
+} from "./controllers/backlog.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
 import {
@@ -78,6 +84,7 @@ import {
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
+import { loadProjects, registerProject } from "./controllers/projects.ts";
 import { deleteSessionsAndRefresh, loadSessions, patchSession } from "./controllers/sessions.ts";
 import {
   installSkill,
@@ -137,6 +144,8 @@ const lazyInstances = createLazy(() => import("./views/instances.ts"));
 const lazyLogs = createLazy(() => import("./views/logs.ts"));
 const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
+const lazyProjects = createLazy(() => import("./views/projects.ts"));
+const lazyBacklog = createLazy(() => import("./views/backlog.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
 
 function lazyRender<M>(getter: () => M | null, render: (mod: M) => unknown) {
@@ -903,6 +912,54 @@ export function renderApp(state: AppViewState) {
                 },
               }),
             )
+          : nothing}
+        ${state.tab === "projects"
+          ? lazyRender(lazyProjects, (m) =>
+              m.renderProjects({
+                loading: state.projectsLoading,
+                projects: state.projectsList,
+                error: state.projectsError,
+                onRefresh: () => loadProjects(state),
+                onRegister: (projectId, repoPath) => registerProject(state, projectId, repoPath),
+                onSelectProject: (projectId) => {
+                  state.projectsSelectedId = projectId;
+                  state.setTab("backlog" as import("./navigation.ts").Tab);
+                },
+              }),
+            )
+          : nothing}
+        ${state.tab === "backlog"
+          ? lazyRender(lazyBacklog, (m) =>
+              m.renderBacklog({
+                loading: state.backlogLoading,
+                tasks: state.backlogTasks,
+                error: state.backlogError,
+                selectedProjectId: state.projectsSelectedId,
+                statusFilter: state.backlogStatusFilter,
+                severityFilter: state.backlogSeverityFilter,
+                addFormVisible: state.backlogAddFormVisible,
+                batchPlan: state.backlogBatchPlan,
+                onRefresh: () => loadBacklog(state),
+                onStatusFilterChange: (status) => {
+                  state.backlogStatusFilter = status;
+                },
+                onSeverityFilterChange: (severity) => {
+                  state.backlogSeverityFilter = severity;
+                },
+                onAddTask: (task) => addBacklogTask(state, task),
+                onToggleAddForm: () => {
+                  state.backlogAddFormVisible = !state.backlogAddFormVisible;
+                },
+                onUpdateStatus: (taskId, status) => updateBacklogTask(state, taskId, { status }),
+                onPlanBatch: () => planBatch(state),
+                onNavigateToProjects: () => {
+                  state.setTab("projects" as import("./navigation.ts").Tab);
+                },
+              }),
+            )
+          : nothing}
+        ${state.tab === "pipeline"
+          ? html`<div class="page-empty"><p>Pipeline view coming soon.</p></div>`
           : nothing}
         ${state.tab === "agents"
           ? lazyRender(lazyAgents, (m) =>

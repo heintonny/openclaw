@@ -258,6 +258,35 @@ export class OpenClawApp extends LitElement {
   @state() presenceError: string | null = null;
   @state() presenceStatus: string | null = null;
 
+  @state() projectsLoading = false;
+  @state() projectsList: Array<{
+    projectId: string;
+    repoPaths: string[];
+    taskSummary?: Record<string, number>;
+  }> = [];
+  @state() projectsError: string | null = null;
+  @state() projectsSelectedId: string | null = null;
+
+  @state() backlogLoading = false;
+  @state() backlogTasks: Array<{
+    taskId: string;
+    title: string;
+    description: string;
+    status: string;
+    severity: string;
+    complexity: string;
+    touches: string[];
+    agentRole: string | null;
+    createdAt: string;
+    updatedAt: string;
+    completedAt: string | null;
+  }> = [];
+  @state() backlogError: string | null = null;
+  @state() backlogStatusFilter: string | null = null;
+  @state() backlogSeverityFilter: string | null = null;
+  @state() backlogAddFormVisible = false;
+  @state() backlogBatchPlan: Array<{ taskId: string; title: string; severity: string }> = [];
+
   @state() agentsLoading = false;
   @state() agentsList: AgentsListResult | null = null;
   @state() agentsError: string | null = null;
