@@ -36,6 +36,8 @@ export type BacklogProps = {
   onUpdateStatus: (taskId: string, status: string) => void;
   onPlanBatch: () => void;
   onNavigateToProjects: () => void;
+  onAutoSelectProject: (projectId: string) => void;
+  projects?: Array<{ projectId: string; repoPaths: string[] }>;
 };
 
 const STATUS_OPTIONS = [
@@ -98,6 +100,12 @@ let _addComplexity = "m";
 let _batchPlanDismissed = false;
 
 export function renderBacklog(props: BacklogProps) {
+  // Auto-select if only one project and none selected
+  if (!props.selectedProjectId && props.projects && props.projects.length === 1) {
+    props.onAutoSelectProject(props.projects[0].projectId);
+    return html`<section class="card"><p>Loading...</p></section>`;
+  }
+
   // If no project selected, show empty state
   if (!props.selectedProjectId) {
     return html`

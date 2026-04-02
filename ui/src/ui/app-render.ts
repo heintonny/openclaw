@@ -955,6 +955,11 @@ export function renderApp(state: AppViewState) {
                 onNavigateToProjects: () => {
                   state.setTab("projects" as import("./navigation.ts").Tab);
                 },
+                onAutoSelectProject: (projectId) => {
+                  state.projectsSelectedId = projectId;
+                  void loadBacklog(state);
+                },
+                projects: state.projectsList,
               }),
             )
           : nothing}
