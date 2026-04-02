@@ -107,8 +107,31 @@ export function renderBacklog(props: BacklogProps) {
     return html`<section class="card"><p>Loading...</p></section>`;
   }
 
-  // If no project selected, show empty state
+  // If no project selected and multiple projects exist, show selector prompt
   if (!props.selectedProjectId) {
+    if (props.projects && props.projects.length > 1) {
+      return html`
+        <section class="card">
+          <div class="card-title" style="margin-bottom: 12px;">Backlog</div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="color: var(--text-muted, #888);">Select a project:</span>
+            <select
+              class="input"
+              style="font-size: 0.9em; padding: 6px 10px; min-width: 180px;"
+              @change=${(e: Event) => {
+                const val = (e.target as HTMLSelectElement).value;
+                if (val) { props.onProjectChange(val); }
+              }}
+            >
+              <option value="" selected disabled>— Choose project —</option>
+              ${props.projects.map(
+                (p) => html`<option value=${p.projectId}>${p.projectId}</option>`,
+              )}
+            </select>
+          </div>
+        </section>
+      `;
+    }
     return html`
       <section class="card">
         <div class="page-empty">
