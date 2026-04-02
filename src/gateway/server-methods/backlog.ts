@@ -1,7 +1,29 @@
 import { openProjectDatabase, resolveProjectSqlitePath } from "../../backlog/db.js";
+import { openProjectRegistry } from "../../backlog/registry.js";
 import { planBatch } from "../../backlog/deps.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
+
+function resolveRepoPath(params: Record<string, unknown>): string {
+  // Accept repoPath directly
+  if (typeof params.repoPath === "string" && params.repoPath) {
+    return params.repoPath;
+  }
+  // Resolve from projectId via registry
+  if (typeof params.projectId === "string" && params.projectId) {
+    const registry = openProjectRegistry();
+    try {
+      const repos = registry.getProject(params.projectId);
+      if (repos.length === 0) {
+        throw new Error(`Project "${params.projectId}" not found in registry`);
+      }
+      return repos[0];
+    } finally {
+      registry.close();
+    }
+  }
+  throw new Error("repoPath or projectId is required");
+}
 
 function getDbForRepo(repoPath: string) {
   if (!repoPath) {
@@ -14,7 +36,7 @@ function getDbForRepo(repoPath: string) {
 export const backlogHandlers: GatewayRequestHandlers = {
   "backlog.list": async ({ params, respond }) => {
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         respond(true, { tasks: db.listTasks(params.filters as any) });
@@ -40,7 +62,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         db.addTask(params as any);
@@ -67,7 +89,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         db.updateTask(params.taskId as string, params.updates as any);
@@ -90,7 +112,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         respond(true, { dependencies: db.listDependencies(params.taskId as string) });
       } finally {
@@ -115,7 +137,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         db.addDependency({
           taskId: params.taskId as string,
@@ -144,7 +166,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         db.removeDependency({
           taskId: params.taskId as string,
@@ -165,7 +187,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
 
   "backlog.batch.plan": async ({ params, respond }) => {
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         const tasks = db.listBacklogTasks();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,7 +211,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
 
   "selfimprove.list": async ({ params, respond }) => {
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         let entries = db.listSelfImprove();
         if (params.scope) {
@@ -221,7 +243,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const db = getDbForRepo(params.repoPath as string);
+      const db = getDbForRepo(resolveRepoPath(params));
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         db.addSelfImprove(params as any);
