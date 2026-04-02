@@ -126,18 +126,18 @@ export function renderProjects(props: ProjectsProps) {
                     <div
                       class="card card--hoverable"
                       style="cursor: pointer; padding: 12px;"
-                      @click=${() => props.onSelectProject(project.id ?? project.projectId)}
+                      @click=${() => props.onSelectProject(project.projectId ?? project.id)}
                       role="button"
                       tabindex="0"
                       @keydown=${(e: KeyboardEvent) => {
                         if (e.key === "Enter" || e.key === " ") {
-                          props.onSelectProject(project.id ?? project.projectId);
+                          props.onSelectProject(project.projectId ?? project.id);
                         }
                       }}
                     >
                       <div class="row" style="align-items: center; gap: 8px; margin-bottom: 8px;">
                         <span class="nav-item__icon" aria-hidden="true">${icons.folder}</span>
-                        <strong style="font-size: 0.95em;">${project.id ?? project.projectId}</strong>
+                        <strong style="font-size: 0.95em;">${project.projectId ?? project.id}</strong>
                       </div>
                       <div
                         style="font-size: 0.8em; color: var(--text-muted, #888); margin-bottom: 8px;"

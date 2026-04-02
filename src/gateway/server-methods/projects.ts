@@ -31,6 +31,7 @@ export const projectsHandlers: GatewayRequestHandlers = {
         }
 
         return {
+          projectId: p.projectId,
           id: p.projectId,
           name: p.projectId,
           repoPaths: p.repoPaths,

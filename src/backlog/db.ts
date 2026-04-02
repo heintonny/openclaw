@@ -297,13 +297,17 @@ export function openProjectDatabase(sqlitePath: string) {
         tasks = tasks.filter((t) => t.severity === filters.severity);
       }
       return tasks.map((t) => ({
-        task_id: t.taskId,
         taskId: t.taskId,
         title: t.title,
+        description: t.description,
         status: t.status,
         severity: t.severity,
         complexity: t.complexity,
-        description: t.description,
+        touches: t.touches,
+        agentRole: t.agentRole,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        completedAt: t.completedAt,
       }));
     },
     close() {
