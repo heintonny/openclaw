@@ -6,6 +6,7 @@ import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { isRoleAuthorizedForMethod, parseGatewayRole } from "./role-policy.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
+import { backlogHandlers } from "./server-methods/backlog.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { configHandlers } from "./server-methods/config.js";
@@ -19,6 +20,7 @@ import { logsHandlers } from "./server-methods/logs.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { nodePendingHandlers } from "./server-methods/nodes-pending.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
+import { projectsHandlers } from "./server-methods/projects.js";
 import { pushHandlers } from "./server-methods/push.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
@@ -95,6 +97,8 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...usageHandlers,
   ...agentHandlers,
   ...agentsHandlers,
+  ...projectsHandlers,
+  ...backlogHandlers,
 };
 
 export async function handleGatewayRequest(
