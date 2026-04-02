@@ -14,6 +14,7 @@ export type ProjectsProps = {
   onRefresh: () => void;
   onRegister: (projectId: string, repoPath: string) => void;
   onSelectProject: (projectId: string) => void;
+  selectedProjectId: string | null;
 };
 
 let _registerFormVisible = false;
@@ -121,23 +122,27 @@ export function renderProjects(props: ProjectsProps) {
                 class="instances-grid"
                 style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;"
               >
-                ${props.projects.map(
-                  (project) => html`
+                ${props.projects.map((project) => {
+                  const pid = project.projectId;
+                  const isSelected = pid === props.selectedProjectId;
+                  return html`
                     <div
                       class="card card--hoverable"
-                      style="cursor: pointer; padding: 12px;"
-                      @click=${() => props.onSelectProject(project.projectId ?? project.id)}
+                      style="cursor: pointer; padding: 12px;${isSelected
+                        ? " outline: 2px solid var(--accent, #6366f1); outline-offset: -2px;"
+                        : ""}"
+                      @click=${() => props.onSelectProject(pid)}
                       role="button"
                       tabindex="0"
                       @keydown=${(e: KeyboardEvent) => {
                         if (e.key === "Enter" || e.key === " ") {
-                          props.onSelectProject(project.projectId ?? project.id);
+                          props.onSelectProject(pid);
                         }
                       }}
                     >
                       <div class="row" style="align-items: center; gap: 8px; margin-bottom: 8px;">
                         <span class="nav-item__icon" aria-hidden="true">${icons.folder}</span>
-                        <strong style="font-size: 0.95em;">${project.projectId ?? project.id}</strong>
+                        <strong style="font-size: 0.95em;">${project.projectId}</strong>
                       </div>
                       <div
                         style="font-size: 0.8em; color: var(--text-muted, #888); margin-bottom: 8px;"
@@ -172,8 +177,8 @@ export function renderProjects(props: ProjectsProps) {
                           `
                         : nothing}
                     </div>
-                  `,
-                )}
+                  `;
+                })}
               </div>
             `}
     </section>

@@ -37,14 +37,25 @@ export function listLessons(params: {
   path?: string;
   scope?: string;
   severity?: string;
-}): Array<{ category: string; severity: string; title: string; description: string; role: string; createdAt: string }> {
+}): Array<{
+  category: string;
+  severity: string;
+  title: string;
+  description: string;
+  role: string;
+  createdAt: string;
+}> {
   const repoPath = params.path || process.cwd();
   const dbPath = resolveProjectSqlitePath(repoPath);
   const db = openProjectDatabase(dbPath);
   try {
     let entries = db.listSelfImprove();
-    if (params.scope) entries = entries.filter((e) => e.scope === params.scope);
-    if (params.severity) entries = entries.filter((e) => e.severity === params.severity);
+    if (params.scope) {
+      entries = entries.filter((e) => e.scope === params.scope);
+    }
+    if (params.severity) {
+      entries = entries.filter((e) => e.severity === params.severity);
+    }
     return entries.map((e) => ({
       category: e.category,
       severity: e.severity,

@@ -246,7 +246,7 @@ export async function refreshActiveTab(host: SettingsHost) {
     }
     // Auto-select if only one project
     if (!app.projectsSelectedId && app.projectsList.length === 1) {
-      app.projectsSelectedId = app.projectsList[0].projectId ?? app.projectsList[0].id;
+      app.projectsSelectedId = app.projectsList[0].projectId;
     }
     if (app.projectsSelectedId) {
       await loadBacklog(app);

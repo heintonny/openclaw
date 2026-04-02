@@ -37,6 +37,7 @@ export type BacklogProps = {
   onPlanBatch: () => void;
   onNavigateToProjects: () => void;
   onAutoSelectProject: (projectId: string) => void;
+  onProjectChange: (projectId: string) => void;
   projects?: Array<{ projectId: string; repoPaths: string[] }>;
 };
 
@@ -102,7 +103,7 @@ let _batchPlanDismissed = false;
 export function renderBacklog(props: BacklogProps) {
   // Auto-select if only one project and none selected
   if (!props.selectedProjectId && props.projects && props.projects.length === 1) {
-    props.onAutoSelectProject(props.projects[0].id ?? props.projects[0].projectId);
+    props.onAutoSelectProject(props.projects[0].projectId);
     return html`<section class="card"><p>Loading...</p></section>`;
   }
 
@@ -171,20 +172,36 @@ export function renderBacklog(props: BacklogProps) {
       >
         <div>
           <div class="row" style="gap: 8px; align-items: center;">
-            <button
-              class="btn btn--sm"
-              @click=${props.onNavigateToProjects}
-              title="Back to Projects"
-            >
-              ← Projects
-            </button>
             <div class="card-title" style="margin: 0;">Backlog</div>
-            <span
-              class="pill"
-              style="font-size: 0.8em; font-weight: normal; color: var(--text-muted, #888);"
-            >
-              ${props.selectedProjectId}
-            </span>
+            ${props.projects && props.projects.length > 1
+              ? html`
+                  <select
+                    class="input"
+                    style="font-size: 0.85em; padding: 4px 8px; min-width: 140px;"
+                    .value=${props.selectedProjectId ?? ""}
+                    @change=${(e: Event) => {
+                      const val = (e.target as HTMLSelectElement).value;
+                      if (val) {
+                        props.onProjectChange(val);
+                      }
+                    }}
+                  >
+                    ${props.projects.map((p) => {
+                      const pid = p.projectId;
+                      return html`<option value=${pid} ?selected=${pid === props.selectedProjectId}>
+                        ${pid}
+                      </option>`;
+                    })}
+                  </select>
+                `
+              : html`
+                  <span
+                    class="pill"
+                    style="font-size: 0.8em; font-weight: normal; color: var(--text-muted, #888);"
+                  >
+                    ${props.selectedProjectId}
+                  </span>
+                `}
           </div>
         </div>
         <div class="row" style="gap: 8px; flex-wrap: wrap;">

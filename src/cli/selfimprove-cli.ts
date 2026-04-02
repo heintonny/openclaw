@@ -62,7 +62,7 @@ export function registerSelfimproveCli(program: Command) {
                   ? "🔧"
                   : "📝";
           console.log(`${icon} [${l.category}/${l.severity}] ${l.title}`);
-          if (l.description) console.log(`   ${l.description}`);
+          if (l.description) { console.log(`   ${l.description}`); }
         }
         console.log(`\n${lessons.length} lesson(s)`);
       }

@@ -919,11 +919,11 @@ export function renderApp(state: AppViewState) {
                 loading: state.projectsLoading,
                 projects: state.projectsList,
                 error: state.projectsError,
+                selectedProjectId: state.projectsSelectedId,
                 onRefresh: () => loadProjects(state),
                 onRegister: (projectId, repoPath) => registerProject(state, projectId, repoPath),
                 onSelectProject: (projectId) => {
                   state.projectsSelectedId = projectId;
-                  state.setTab("backlog" as import("./navigation.ts").Tab);
                   void loadBacklog(state);
                 },
               }),
@@ -957,6 +957,10 @@ export function renderApp(state: AppViewState) {
                   state.setTab("projects" as import("./navigation.ts").Tab);
                 },
                 onAutoSelectProject: (projectId) => {
+                  state.projectsSelectedId = projectId;
+                  void loadBacklog(state);
+                },
+                onProjectChange: (projectId) => {
                   state.projectsSelectedId = projectId;
                   void loadBacklog(state);
                 },
