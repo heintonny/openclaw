@@ -10,30 +10,38 @@ export function registerSelfimproveCli(program: Command) {
     .description("Add a new agent lesson")
     .requiredOption("--title <title>", "Lesson title")
     .option("--description <desc>", "Detailed description", "")
-    .option("--category <cat>", "Category", "general")
-    .option("--severity <level>", "Severity: high, medium, low", "medium")
+    .option("--category <cat>", "Category: lesson, pattern, anti_pattern, process", "lesson")
+    .option("--severity <level>", "Severity: info, warning, critical", "info")
     .option("--role <role>", "Agent role that learned this", "general")
+    .option("--scope <scope>", "Scope: project, global", "project")
+    .option("--task <taskId>", "Related task ID")
+    .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { addLesson } = await import("../backlog/selfimprove.js");
-      const lessonId = addLesson({
+      const title = addLesson({
+        path: (opts.path as string) || process.cwd(),
         title: opts.title as string,
-        description: opts.description as string,
+        description: (opts.description as string) || "",
         category: opts.category as string,
         severity: opts.severity as string,
         role: opts.role as string,
+        scope: opts.scope as string,
+        taskId: opts.task as string | undefined,
       });
-      console.log(`Added lesson ${lessonId}: ${opts.title}`);
+      console.log(`Added lesson: ${title}`);
     });
 
   cmd
     .command("list")
     .description("List agent lessons")
-    .option("--scope <scope>", "Filter by scope")
-    .option("--severity <level>", "Filter by severity")
+    .option("--scope <scope>", "Filter by scope: project, global")
+    .option("--severity <level>", "Filter by severity: info, warning, critical")
     .option("--json", "Output as JSON", false)
+    .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { listLessons } = await import("../backlog/selfimprove.js");
       const lessons = listLessons({
+        path: (opts.path as string) || process.cwd(),
         scope: opts.scope as string | undefined,
         severity: opts.severity as string | undefined,
       });
@@ -45,8 +53,18 @@ export function registerSelfimproveCli(program: Command) {
           return;
         }
         for (const l of lessons) {
-          console.log(`[${l.category}/${l.severity}] ${l.title}`);
+          const icon =
+            l.category === "anti_pattern"
+              ? "⚠️"
+              : l.category === "pattern"
+                ? "💡"
+                : l.category === "process"
+                  ? "🔧"
+                  : "📝";
+          console.log(`${icon} [${l.category}/${l.severity}] ${l.title}`);
+          if (l.description) console.log(`   ${l.description}`);
         }
+        console.log(`\n${lessons.length} lesson(s)`);
       }
     });
 }
