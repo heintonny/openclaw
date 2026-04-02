@@ -9,34 +9,33 @@ export const projectsHandlers: GatewayRequestHandlers = {
     try {
       const projects = registry.listProjects();
 
-      // Enhance with summary stats
+      // Enhance with detailed stats
       const enhanced = projects.map((p) => {
-        let total = 0;
-        let active = 0;
-        let done = 0;
+        let detailedStats = null;
 
-        // Just checking the first repo for stats in this v1 implementation
+        // Checking the first repo for stats in this v1 implementation
         if (p.repoPaths.length > 0) {
           try {
             const dbPath = resolveProjectSqlitePath(p.repoPaths[0]);
             const db = openProjectDatabase(dbPath);
-            const summary = db.getSummary();
-            total = summary.total || 0;
-            active = summary.inProgress || 0;
-            done = summary.done || 0;
+            detailedStats = db.getDetailedStats();
             db.close();
           } catch {
             // DB might not exist yet
           }
         }
 
+        const statusBreakdown = detailedStats?.statusBreakdown ?? {};
         return {
           projectId: p.projectId,
-          id: p.projectId,
-          name: p.projectId,
           repoPaths: p.repoPaths,
           registeredAt: p.registeredAt,
-          stats: { total, active, done },
+          stats: {
+            total: detailedStats?.total ?? 0,
+            active: statusBreakdown.inProgress ?? 0,
+            done: statusBreakdown.done ?? 0,
+          },
+          detailedStats,
         };
       });
 

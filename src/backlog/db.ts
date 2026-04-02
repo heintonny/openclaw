@@ -287,6 +287,72 @@ export function openProjectDatabase(sqlitePath: string) {
       summary.total = tasks.length;
       return summary;
     },
+    getDetailedStats(): {
+      statusBreakdown: Record<string, number>;
+      severityBreakdown: Record<string, number>;
+      complexityBreakdown: Record<string, number>;
+      total: number;
+      selfImproveUnapplied: number;
+      lastActivity: string | null;
+      completedLast7d: number;
+      completedLast30d: number;
+      blockedCritical: Array<{ taskId: string; title: string; severity: string }>;
+    } {
+      const tasks = this.listBacklogTasks();
+      const statusBreakdown: Record<string, number> = {};
+      const severityBreakdown: Record<string, number> = {};
+      const complexityBreakdown: Record<string, number> = {};
+      let lastActivity: string | null = null;
+      let completedLast7d = 0;
+      let completedLast30d = 0;
+      const now = Date.now();
+      const day7 = now - 7 * 86400000;
+      const day30 = now - 30 * 86400000;
+      const blockedCritical: Array<{ taskId: string; title: string; severity: string }> = [];
+
+      for (const t of tasks) {
+        statusBreakdown[t.status] = (statusBreakdown[t.status] || 0) + 1;
+        if (t.status !== "done" && t.status !== "cancelled") {
+          severityBreakdown[t.severity] = (severityBreakdown[t.severity] || 0) + 1;
+          complexityBreakdown[t.complexity] = (complexityBreakdown[t.complexity] || 0) + 1;
+        }
+        if (t.updatedAt && (!lastActivity || t.updatedAt > lastActivity)) {
+          lastActivity = t.updatedAt;
+        }
+        if (t.completedAt) {
+          const completedMs = new Date(t.completedAt).getTime();
+          if (completedMs >= day7) {
+            completedLast7d++;
+          }
+          if (completedMs >= day30) {
+            completedLast30d++;
+          }
+        }
+        if (
+          t.status === "blocked" ||
+          (t.status !== "done" &&
+            t.status !== "cancelled" &&
+            (t.severity === "critical" || t.severity === "high"))
+        ) {
+          blockedCritical.push({ taskId: t.taskId, title: t.title, severity: t.severity });
+        }
+      }
+
+      const selfImproveEntries = this.listSelfImprove();
+      const selfImproveUnapplied = selfImproveEntries.filter((e) => !e.applied).length;
+
+      return {
+        statusBreakdown,
+        severityBreakdown,
+        complexityBreakdown,
+        total: tasks.length,
+        selfImproveUnapplied,
+        lastActivity,
+        completedLast7d,
+        completedLast30d,
+        blockedCritical: blockedCritical.slice(0, 10),
+      };
+    },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     listTasks(filters?: { status?: string; severity?: string }): Record<string, unknown>[] {
       let tasks = this.listBacklogTasks();

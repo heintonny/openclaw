@@ -923,7 +923,13 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => loadProjects(state),
                 onRegister: (projectId, repoPath) => registerProject(state, projectId, repoPath),
                 onSelectProject: (projectId) => {
+                  if (state.projectsSelectedId !== projectId) {
+                    state.projectsSelectedId = projectId;
+                  }
+                },
+                onNavigateToBacklog: (projectId) => {
                   state.projectsSelectedId = projectId;
+                  state.setTab("backlog" as import("./navigation.ts").Tab);
                   void loadBacklog(state);
                 },
               }),
