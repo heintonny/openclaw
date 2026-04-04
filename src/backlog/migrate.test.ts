@@ -31,7 +31,7 @@ describe("backlog/migrate", () => {
         status: "done",
         severity: "high",
         complexity: "l",
-        touches: ["src/styles/", "src/components/"],
+        labels: ["src/styles/", "src/components/"],
         assignee: "dev",
       },
       {
@@ -62,8 +62,8 @@ describe("backlog/migrate", () => {
       expect(task1?.status).toBe("done");
       expect(task1?.severity).toBe("high");
       expect(task1?.complexity).toBe("l");
-      expect(task1?.touches).toEqual(["src/styles/", "src/components/"]);
-      expect(task1?.agentRole).toBe("dev");
+      expect(task1?.labels).toEqual(["src/styles/", "src/components/"]);
+      expect(task1?.assignee).toBe("dev");
       expect(task1?.completedAt).not.toBeNull();
 
       const task2 = db.getBacklogTask("UI-54");
@@ -111,7 +111,7 @@ describe("backlog/migrate", () => {
     try {
       const deps = db.listDependencies("A-02");
       expect(deps).toHaveLength(1);
-      expect(deps[0].taskId).toBe("A-02");
+      expect(deps[0].issueId).toBe("A-02");
       expect(deps[0].dependsOn).toBe("A-01");
     } finally {
       db.close();
@@ -135,7 +135,7 @@ describe("backlog/migrate", () => {
     try {
       const deps = db.listDependencies("A-03");
       expect(deps).toHaveLength(1);
-      expect(deps[0].taskId).toBe("A-03");
+      expect(deps[0].issueId).toBe("A-03");
       expect(deps[0].dependsOn).toBe("A-01");
     } finally {
       db.close();
@@ -220,8 +220,8 @@ describe("backlog/migrate", () => {
       expect(task?.severity).toBe("medium");
       expect(task?.complexity).toBe("m");
       expect(task?.description).toBe("");
-      expect(task?.touches).toEqual([]);
-      expect(task?.agentRole).toBeNull();
+      expect(task?.labels).toEqual([]);
+      expect(task?.assignee).toBeNull();
     } finally {
       db.close();
     }

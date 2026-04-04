@@ -267,25 +267,104 @@ export class OpenClawApp extends LitElement {
   @state() projectsError: string | null = null;
   @state() projectsSelectedId: string | null = null;
 
-  @state() backlogLoading = false;
-  @state() backlogTasks: Array<{
+  @state() issuesLoading = false;
+  @state() issuesList: Array<{
     taskId: string;
+    issueId?: string;
     title: string;
     description: string;
     status: string;
     severity: string;
     complexity: string;
-    touches: string[];
-    agentRole: string | null;
+    touches?: string[];
+    labels?: string[];
+    agentRole?: string | null;
+    assignee?: string | null;
     createdAt: string;
     updatedAt: string;
     completedAt: string | null;
+    projectId: string;
   }> = [];
-  @state() backlogError: string | null = null;
-  @state() backlogStatusFilter: string | null = null;
-  @state() backlogSeverityFilter: string | null = null;
-  @state() backlogAddFormVisible = false;
-  @state() backlogBatchPlan: Array<{ taskId: string; title: string; severity: string }> = [];
+  @state() issuesError: string | null = null;
+  @state() issuesStatusFilter: string | null = null;
+  @state() issuesSeverityFilter: string | null = null;
+  @state() issuesAddFormVisible = false;
+  @state() issuesMoreProjectsOpen = false;
+  @state() issuesMoreProjectsSearch = "";
+  @state() issuesBatchPlanDismissed = false;
+  @state() issuesBatchPlan: Array<{
+    taskId: string;
+    title: string;
+    severity: string;
+  }> = [];
+  @state() issuesProjectFilter: string | null = null;
+  // Backward-compatible getters
+  get backlogLoading() {
+    return this.issuesLoading;
+  }
+  set backlogLoading(v) {
+    this.issuesLoading = v;
+  }
+  get backlogTasks() {
+    return this.issuesList;
+  }
+  set backlogTasks(v) {
+    this.issuesList = v;
+  }
+  get backlogError() {
+    return this.issuesError;
+  }
+  set backlogError(v) {
+    this.issuesError = v;
+  }
+  get backlogStatusFilter() {
+    return this.issuesStatusFilter;
+  }
+  set backlogStatusFilter(v) {
+    this.issuesStatusFilter = v;
+  }
+  get backlogSeverityFilter() {
+    return this.issuesSeverityFilter;
+  }
+  set backlogSeverityFilter(v) {
+    this.issuesSeverityFilter = v;
+  }
+  get backlogAddFormVisible() {
+    return this.issuesAddFormVisible;
+  }
+  set backlogAddFormVisible(v) {
+    this.issuesAddFormVisible = v;
+  }
+  get backlogMoreProjectsOpen() {
+    return this.issuesMoreProjectsOpen;
+  }
+  set backlogMoreProjectsOpen(v) {
+    this.issuesMoreProjectsOpen = v;
+  }
+  get backlogMoreProjectsSearch() {
+    return this.issuesMoreProjectsSearch;
+  }
+  set backlogMoreProjectsSearch(v) {
+    this.issuesMoreProjectsSearch = v;
+  }
+  get backlogBatchPlanDismissed() {
+    return this.issuesBatchPlanDismissed;
+  }
+  set backlogBatchPlanDismissed(v) {
+    this.issuesBatchPlanDismissed = v;
+  }
+  get backlogBatchPlan() {
+    return this.issuesBatchPlan;
+  }
+  set backlogBatchPlan(v) {
+    this.issuesBatchPlan = v;
+  }
+  get backlogProjectFilter() {
+    return this.issuesProjectFilter;
+  }
+  set backlogProjectFilter(v) {
+    this.issuesProjectFilter = v;
+  }
 
   @state() agentsLoading = false;
   @state() agentsList: AgentsListResult | null = null;
@@ -394,10 +473,10 @@ export class OpenClawApp extends LitElement {
   @state() cronJobsLimit = 50;
   @state() cronJobsQuery = "";
   @state() cronJobsEnabledFilter: import("./types.js").CronJobsEnabledFilter = "all";
-  @state() cronJobsScheduleKindFilter: import("./controllers/cron.js").CronJobsScheduleKindFilter =
-    "all";
-  @state() cronJobsLastStatusFilter: import("./controllers/cron.js").CronJobsLastStatusFilter =
-    "all";
+  @state()
+  cronJobsScheduleKindFilter: import("./controllers/cron.js").CronJobsScheduleKindFilter = "all";
+  @state()
+  cronJobsLastStatusFilter: import("./controllers/cron.js").CronJobsLastStatusFilter = "all";
   @state() cronJobsSortBy: import("./types.js").CronJobsSortBy = "nextRunAtMs";
   @state() cronJobsSortDir: import("./types.js").CronSortDir = "asc";
   @state() cronStatus: CronStatus | null = null;

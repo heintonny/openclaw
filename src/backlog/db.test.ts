@@ -47,14 +47,18 @@ describe("backlog/db", () => {
     dbInstance = openProjectDatabase(sqlitePath);
 
     const task: BacklogTask = {
-      taskId: "TASK-001",
+      issueId: "TASK-001",
       title: "First task",
       description: "Do something",
       status: "notStarted",
       severity: "medium",
       complexity: "m",
-      touches: ["src/index.ts"],
-      agentRole: "dev",
+      labels: ["src/index.ts"],
+      assignee: "dev",
+      sourceType: "internal",
+      sourceExternalId: null,
+      sourceExternalUrl: null,
+      sourceSyncedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       completedAt: null,
@@ -62,12 +66,12 @@ describe("backlog/db", () => {
 
     dbInstance.addBacklogTask(task);
 
-    const fetched = dbInstance.getBacklogTask("TASK-001");
+    const fetched = dbInstance.getIssue("TASK-001");
     expect(fetched).toMatchObject(task);
 
     const list = dbInstance.listBacklogTasks();
     expect(list).toHaveLength(1);
-    expect(list[0].taskId).toBe("TASK-001");
+    expect(list[0].issueId).toBe("TASK-001");
 
     task.status = "inProgress";
     task.title = "Updated task";
@@ -83,14 +87,14 @@ describe("backlog/db", () => {
     initProjectDirectory(tempDir);
     dbInstance = openProjectDatabase(sqlitePath);
 
-    dbInstance.addDependency({ taskId: "TASK-002", dependsOn: "TASK-001" });
-    dbInstance.addDependency({ taskId: "TASK-002", dependsOn: "TASK-003" });
+    dbInstance.addDependency({ issueId: "TASK-002", dependsOn: "TASK-001" });
+    dbInstance.addDependency({ issueId: "TASK-002", dependsOn: "TASK-003" });
 
     const deps = dbInstance.listDependencies("TASK-002");
     expect(deps).toHaveLength(2);
     expect(deps.map((d) => d.dependsOn).toSorted()).toEqual(["TASK-001", "TASK-003"]);
 
-    dbInstance.removeDependency({ taskId: "TASK-002", dependsOn: "TASK-001" });
+    dbInstance.removeDependency({ issueId: "TASK-002", dependsOn: "TASK-001" });
 
     const afterRemove = dbInstance.listDependencies("TASK-002");
     expect(afterRemove).toHaveLength(1);

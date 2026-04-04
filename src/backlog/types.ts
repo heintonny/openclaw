@@ -1,7 +1,7 @@
 // Task severity, complexity, status
-export type BacklogSeverity = "critical" | "high" | "medium" | "low";
-export type BacklogComplexity = "xs" | "s" | "m" | "l" | "xl";
-export type BacklogStatus =
+export type IssueSeverity = "critical" | "high" | "medium" | "low";
+export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
+export type IssueStatus =
   | "notStarted"
   | "inProgress"
   | "inReview"
@@ -9,24 +9,36 @@ export type BacklogStatus =
   | "blocked"
   | "cancelled";
 
-export type BacklogTask = {
-  taskId: string; // e.g. "TASK-001"
+export type Issue = {
+  issueId: string; // e.g. "TASK-001"
   title: string;
   description: string;
-  status: BacklogStatus;
-  severity: BacklogSeverity;
-  complexity: BacklogComplexity;
-  touches: string[]; // files this task affects
-  agentRole: string | null; // dev, qa, reviewer, etc.
+  status: IssueStatus;
+  severity: IssueSeverity;
+  complexity: IssueComplexity;
+  labels: string[]; // files/areas this issue affects
+  assignee: string | null; // dev, qa, reviewer, etc.
+  // Source fields for external issue tracking
+  sourceType: "internal" | "github" | "linear" | "jira";
+  sourceExternalId: string | null;
+  sourceExternalUrl: string | null;
+  sourceSyncedAt: string | null;
   createdAt: string; // ISO datetime
   updatedAt: string;
   completedAt: string | null;
 };
 
-export type BacklogDependency = {
-  taskId: string;
+export type IssueDependency = {
+  issueId: string;
   dependsOn: string;
 };
+
+// Backward-compatible aliases
+export type BacklogSeverity = IssueSeverity;
+export type BacklogComplexity = IssueComplexity;
+export type BacklogStatus = IssueStatus;
+export type BacklogTask = Issue;
+export type BacklogDependency = IssueDependency;
 
 export type ExecutionRun = {
   id: number;

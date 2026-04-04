@@ -1,6 +1,6 @@
 import { openProjectDatabase, resolveProjectSqlitePath } from "../../backlog/db.js";
-import { openProjectRegistry } from "../../backlog/registry.js";
 import { planBatch } from "../../backlog/deps.js";
+import { openProjectRegistry } from "../../backlog/registry.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
@@ -33,8 +33,45 @@ function getDbForRepo(repoPath: string) {
   return openProjectDatabase(dbPath);
 }
 
-export const backlogHandlers: GatewayRequestHandlers = {
-  "backlog.list": async ({ params, respond }) => {
+export const issuesHandlers: GatewayRequestHandlers = {
+  "issues.listAll": async ({ params: _params, respond }) => {
+    try {
+      const registry = openProjectRegistry();
+      try {
+        const projects = registry.listProjects();
+        const allTasks: Array<Record<string, unknown>> = [];
+        for (const project of projects) {
+          for (const repoPath of project.repoPaths) {
+            try {
+              const dbPath = resolveProjectSqlitePath(repoPath);
+              const db = openProjectDatabase(dbPath);
+              try {
+                const tasks = db.listTasks();
+                for (const task of tasks) {
+                  allTasks.push({ ...task, projectId: project.projectId });
+                }
+              } finally {
+                db.close();
+              }
+            } catch {
+              // Skip projects with missing/corrupt DBs
+            }
+          }
+        }
+        respond(true, { tasks: allTasks });
+      } finally {
+        registry.close();
+      }
+    } catch (e: unknown) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, e instanceof Error ? e.message : String(e)),
+      );
+    }
+  },
+
+  "issues.list": async ({ params, respond }) => {
     try {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
@@ -52,12 +89,12 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.add": async ({ params, respond }) => {
-    if (!params.taskId || !params.title) {
+  "issues.add": async ({ params, respond }) => {
+    if ((!params.taskId && !params.issueId) || !params.title) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and title are required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "issueId (or taskId) and title are required"),
       );
       return;
     }
@@ -66,7 +103,8 @@ export const backlogHandlers: GatewayRequestHandlers = {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         db.addTask(params as any);
-        respond(true, { task: db.getBacklogTask(params.taskId as string) });
+        const id = (params.issueId || params.taskId) as string;
+        respond(true, { task: db.getIssue(id) });
       } finally {
         db.close();
       }
@@ -79,12 +117,13 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.update": async ({ params, respond }) => {
-    if (!params.taskId || !params.updates) {
+  "issues.update": async ({ params, respond }) => {
+    const id = (params.issueId || params.taskId) as string | undefined;
+    if (!id || !params.updates) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and updates are required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "issueId (or taskId) and updates are required"),
       );
       return;
     }
@@ -92,8 +131,8 @@ export const backlogHandlers: GatewayRequestHandlers = {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        db.updateTask(params.taskId as string, params.updates as any);
-        respond(true, { task: db.getBacklogTask(params.taskId as string) });
+        db.updateTask(id, params.updates as any);
+        respond(true, { task: db.getIssue(id) });
       } finally {
         db.close();
       }
@@ -106,15 +145,22 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.deps": async ({ params, respond }) => {
-    if (!params.taskId) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "taskId is required"));
+  "issues.deps": async ({ params, respond }) => {
+    const id = (params.issueId || params.taskId) as string | undefined;
+    if (!id) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "issueId (or taskId) is required"),
+      );
       return;
     }
     try {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
-        respond(true, { dependencies: db.listDependencies(params.taskId as string) });
+        respond(true, {
+          dependencies: db.listDependencies(id),
+        });
       } finally {
         db.close();
       }
@@ -127,12 +173,13 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.deps.add": async ({ params, respond }) => {
-    if (!params.taskId || !params.dependsOn) {
+  "issues.deps.add": async ({ params, respond }) => {
+    const id = (params.issueId || params.taskId) as string | undefined;
+    if (!id || !params.dependsOn) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and dependsOn are required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "issueId (or taskId) and dependsOn are required"),
       );
       return;
     }
@@ -140,7 +187,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
         db.addDependency({
-          taskId: params.taskId as string,
+          issueId: id,
           dependsOn: params.dependsOn as string,
         });
         respond(true, { success: true });
@@ -156,12 +203,13 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.deps.remove": async ({ params, respond }) => {
-    if (!params.taskId || !params.dependsOn) {
+  "issues.deps.remove": async ({ params, respond }) => {
+    const id = (params.issueId || params.taskId) as string | undefined;
+    if (!id || !params.dependsOn) {
       respond(
         false,
         undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "taskId and dependsOn are required"),
+        errorShape(ErrorCodes.INVALID_REQUEST, "issueId (or taskId) and dependsOn are required"),
       );
       return;
     }
@@ -169,7 +217,7 @@ export const backlogHandlers: GatewayRequestHandlers = {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
         db.removeDependency({
-          taskId: params.taskId as string,
+          issueId: id,
           dependsOn: params.dependsOn as string,
         });
         respond(true, { success: true });
@@ -185,17 +233,17 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "backlog.batch.plan": async ({ params, respond }) => {
+  "issues.batch.plan": async ({ params, respond }) => {
     try {
       const db = getDbForRepo(resolveRepoPath(params));
       try {
-        const tasks = db.listBacklogTasks();
+        const issues = db.listIssues();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const allDeps: any[] = [];
-        for (const t of tasks) {
-          allDeps.push(...db.listDependencies(t.taskId));
+        for (const t of issues) {
+          allDeps.push(...db.listDependencies(t.issueId));
         }
-        const batch = planBatch(tasks, allDeps, (params.maxSize as number) || 5);
+        const batch = planBatch(issues, allDeps, (params.maxSize as number) || 5);
         respond(true, { batch });
       } finally {
         db.close();
@@ -260,3 +308,6 @@ export const backlogHandlers: GatewayRequestHandlers = {
     }
   },
 };
+
+// Backward-compatible alias
+export const backlogHandlers = issuesHandlers;

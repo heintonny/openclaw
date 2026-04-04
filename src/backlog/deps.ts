@@ -1,13 +1,13 @@
-import type { BacklogDependency, BacklogTask } from "./types.js";
+import type { IssueDependency, Issue } from "./types.js";
 
 // Check for cycles using DFS
-export function hasCycle(dependencies: BacklogDependency[]): boolean {
+export function hasCycle(dependencies: IssueDependency[]): boolean {
   const graph = new Map<string, string[]>();
   for (const dep of dependencies) {
-    if (!graph.has(dep.taskId)) {
-      graph.set(dep.taskId, []);
+    if (!graph.has(dep.issueId)) {
+      graph.set(dep.issueId, []);
     }
-    graph.get(dep.taskId)!.push(dep.dependsOn);
+    graph.get(dep.issueId)!.push(dep.dependsOn);
   }
 
   const visited = new Set<string>();
@@ -40,19 +40,19 @@ export function hasCycle(dependencies: BacklogDependency[]): boolean {
 }
 
 // Topological sort (Kahn's algorithm)
-export function topologicalSort(dependencies: BacklogDependency[]): string[] {
+export function topologicalSort(dependencies: IssueDependency[]): string[] {
   const graph = new Map<string, Set<string>>();
   const inDegree = new Map<string, number>();
   const allNodes = new Set<string>();
 
   for (const dep of dependencies) {
-    allNodes.add(dep.taskId);
+    allNodes.add(dep.issueId);
     allNodes.add(dep.dependsOn);
     if (!graph.has(dep.dependsOn)) {
       graph.set(dep.dependsOn, new Set());
     }
-    graph.get(dep.dependsOn)!.add(dep.taskId);
-    inDegree.set(dep.taskId, (inDegree.get(dep.taskId) || 0) + 1);
+    graph.get(dep.dependsOn)!.add(dep.issueId);
+    inDegree.set(dep.issueId, (inDegree.get(dep.issueId) || 0) + 1);
   }
 
   const queue: string[] = [];
@@ -76,33 +76,33 @@ export function topologicalSort(dependencies: BacklogDependency[]): string[] {
   return result;
 }
 
-// Plan next batch: find tasks that are notStarted and have all dependencies done
+// Plan next batch: find issues that are notStarted and have all dependencies done
 export function planBatch(
-  tasks: BacklogTask[],
-  dependencies: BacklogDependency[],
+  issues: Issue[],
+  dependencies: IssueDependency[],
   maxBatchSize: number = 5,
-): BacklogTask[] {
-  const taskMap = new Map(tasks.map((t) => [t.taskId, t]));
-  const depsByTask = new Map<string, string[]>();
+): Issue[] {
+  const issueMap = new Map(issues.map((t) => [t.issueId, t]));
+  const depsByIssue = new Map<string, string[]>();
   for (const dep of dependencies) {
-    if (!depsByTask.has(dep.taskId)) {
-      depsByTask.set(dep.taskId, []);
+    if (!depsByIssue.has(dep.issueId)) {
+      depsByIssue.set(dep.issueId, []);
     }
-    depsByTask.get(dep.taskId)!.push(dep.dependsOn);
+    depsByIssue.get(dep.issueId)!.push(dep.dependsOn);
   }
 
-  const ready: BacklogTask[] = [];
-  for (const task of tasks) {
-    if (task.status !== "notStarted") {
+  const ready: Issue[] = [];
+  for (const issue of issues) {
+    if (issue.status !== "notStarted") {
       continue;
     }
-    const deps = depsByTask.get(task.taskId) || [];
+    const deps = depsByIssue.get(issue.issueId) || [];
     const allDepsDone = deps.every((depId) => {
-      const depTask = taskMap.get(depId);
-      return depTask && depTask.status === "done";
+      const depIssue = issueMap.get(depId);
+      return depIssue && depIssue.status === "done";
     });
     if (allDepsDone) {
-      ready.push(task);
+      ready.push(issue);
     }
   }
 

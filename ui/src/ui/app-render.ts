@@ -29,12 +29,6 @@ import {
   refreshVisibleToolsEffectiveForCurrentSession,
   saveAgentsConfig,
 } from "./controllers/agents.ts";
-import {
-  loadBacklog,
-  addBacklogTask,
-  updateBacklogTask,
-  planBatch,
-} from "./controllers/backlog.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
 import {
@@ -81,6 +75,7 @@ import {
   saveExecApprovals,
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
+import { loadAllIssues, addIssue, updateIssue, planIssueBatch } from "./controllers/issues.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -145,7 +140,7 @@ const lazyLogs = createLazy(() => import("./views/logs.ts"));
 const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazyProjects = createLazy(() => import("./views/projects.ts"));
-const lazyBacklog = createLazy(() => import("./views/backlog.ts"));
+const lazyIssues = createLazy(() => import("./views/issues.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
 
 function lazyRender<M>(getter: () => M | null, render: (mod: M) => unknown) {
@@ -223,7 +218,10 @@ function isUpdateBannerDismissed(updateAvailable: unknown): boolean {
   if (!dismissed) {
     return false;
   }
-  const info = updateAvailable as { latestVersion?: unknown; channel?: unknown };
+  const info = updateAvailable as {
+    latestVersion?: unknown;
+    channel?: unknown;
+  };
   const latestVersion = info && typeof info.latestVersion === "string" ? info.latestVersion : null;
   const channel = info && typeof info.channel === "string" ? info.channel : null;
   return Boolean(
@@ -232,7 +230,10 @@ function isUpdateBannerDismissed(updateAvailable: unknown): boolean {
 }
 
 function dismissUpdateBanner(updateAvailable: unknown) {
-  const info = updateAvailable as { latestVersion?: unknown; channel?: unknown };
+  const info = updateAvailable as {
+    latestVersion?: unknown;
+    channel?: unknown;
+  };
   const latestVersion = info && typeof info.latestVersion === "string" ? info.latestVersion : null;
   if (!latestVersion) {
     return;
@@ -522,7 +523,9 @@ export function renderApp(state: AppViewState) {
                             <button
                               class="nav-section__label"
                               @click=${() => {
-                                const next = { ...state.settings.navGroupsCollapsed };
+                                const next = {
+                                  ...state.settings.navGroupsCollapsed,
+                                };
                                 next[group.label] = !isGroupCollapsed;
                                 state.applySettings({
                                   ...state.settings,
@@ -859,7 +862,10 @@ export function renderApp(state: AppViewState) {
                 deliveryToSuggestions,
                 accountSuggestions,
                 onFormChange: (patch) => {
-                  state.cronForm = normalizeCronFormState({ ...state.cronForm, ...patch });
+                  state.cronForm = normalizeCronFormState({
+                    ...state.cronForm,
+                    ...patch,
+                  });
                   state.cronFieldErrors = validateCronForm(state.cronForm);
                 },
                 onRefresh: () => state.loadCron(),
@@ -927,55 +933,65 @@ export function renderApp(state: AppViewState) {
                     state.projectsSelectedId = projectId;
                   }
                 },
-                onNavigateToBacklog: (projectId) => {
+                onNavigateToIssues: (projectId) => {
                   state.projectsSelectedId = projectId;
-                  state.setTab("backlog" as import("./navigation.ts").Tab);
-                  void loadBacklog(state);
+                  state.issuesProjectFilter = projectId;
+                  state.setTab("issues" as import("./navigation.ts").Tab);
+                  void loadAllIssues(state);
                 },
               }),
             )
           : nothing}
-        ${state.tab === "backlog"
-          ? lazyRender(lazyBacklog, (m) =>
-              m.renderBacklog({
-                loading: state.backlogLoading,
-                tasks: state.backlogTasks,
-                error: state.backlogError,
-                selectedProjectId: state.projectsSelectedId,
-                statusFilter: state.backlogStatusFilter,
-                severityFilter: state.backlogSeverityFilter,
-                addFormVisible: state.backlogAddFormVisible,
-                batchPlan: state.backlogBatchPlan,
-                onRefresh: () => loadBacklog(state),
+        ${state.tab === "issues"
+          ? lazyRender(lazyIssues, (m) =>
+              m.renderIssues({
+                loading: state.issuesLoading,
+                tasks: state.issuesList,
+                error: state.issuesError,
+                statusFilter: state.issuesStatusFilter,
+                severityFilter: state.issuesSeverityFilter,
+                projectFilter: state.issuesProjectFilter,
+                addFormVisible: state.issuesAddFormVisible,
+                moreProjectsOpen: state.issuesMoreProjectsOpen,
+                moreProjectsSearch: state.issuesMoreProjectsSearch,
+                batchPlanDismissed: state.issuesBatchPlanDismissed,
+                batchPlan: state.issuesBatchPlan,
+                onRefresh: () => loadAllIssues(state),
                 onStatusFilterChange: (status) => {
-                  state.backlogStatusFilter = status;
+                  state.issuesStatusFilter = status;
                 },
                 onSeverityFilterChange: (severity) => {
-                  state.backlogSeverityFilter = severity;
+                  state.issuesSeverityFilter = severity;
                 },
-                onAddTask: (task) => addBacklogTask(state, task),
+                onProjectFilterChange: (projectId) => {
+                  state.issuesProjectFilter = projectId;
+                  // Also set projectsSelectedId for add/batch operations
+                  state.projectsSelectedId = projectId;
+                },
+                onMoreProjectsOpenChange: (open) => {
+                  state.issuesMoreProjectsOpen = open;
+                },
+                onMoreProjectsSearchChange: (search) => {
+                  state.issuesMoreProjectsSearch = search;
+                },
+                onBatchPlanDismiss: () => {
+                  state.issuesBatchPlanDismissed = true;
+                },
+                onAddTask: (task) => addIssue(state, task, state.issuesProjectFilter ?? undefined),
                 onToggleAddForm: () => {
-                  state.backlogAddFormVisible = !state.backlogAddFormVisible;
+                  state.issuesAddFormVisible = !state.issuesAddFormVisible;
                 },
-                onUpdateStatus: (taskId, status) => updateBacklogTask(state, taskId, { status }),
-                onPlanBatch: () => planBatch(state),
-                onNavigateToProjects: () => {
-                  state.setTab("projects" as import("./navigation.ts").Tab);
-                },
-                onAutoSelectProject: (projectId) => {
-                  state.projectsSelectedId = projectId;
-                  void loadBacklog(state);
-                },
-                onProjectChange: (projectId) => {
-                  state.projectsSelectedId = projectId;
-                  void loadBacklog(state);
-                },
+                onUpdateStatus: (taskId, status, projectId) =>
+                  updateIssue(state, taskId, { status }, projectId),
+                onPlanBatch: () => planIssueBatch(state, state.issuesProjectFilter ?? undefined),
                 projects: state.projectsList,
               }),
             )
           : nothing}
         ${state.tab === "pipeline"
-          ? html`<div class="page-empty"><p>Pipeline view coming soon.</p></div>`
+          ? html`<div class="page-empty">
+              <p>Pipeline view coming soon.</p>
+            </div>`
           : nothing}
         ${state.tab === "agents"
           ? lazyRender(lazyAgents, (m) =>
@@ -1170,11 +1186,17 @@ export function renderApp(state: AppViewState) {
                   void loadAgentFileContent(state, resolvedAgentId, name);
                 },
                 onFileDraftChange: (name, content) => {
-                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: content };
+                  state.agentFileDrafts = {
+                    ...state.agentFileDrafts,
+                    [name]: content,
+                  };
                 },
                 onFileReset: (name) => {
                   const base = state.agentFileContents[name] ?? "";
-                  state.agentFileDrafts = { ...state.agentFileDrafts, [name]: base };
+                  state.agentFileDrafts = {
+                    ...state.agentFileDrafts,
+                    [name]: base,
+                  };
                 },
                 onFileSave: (name) => {
                   if (!resolvedAgentId) {
@@ -1242,8 +1264,11 @@ export function renderApp(state: AppViewState) {
                   if (index < 0) {
                     return;
                   }
-                  const list = (getCurrentConfigValue() as { agents?: { list?: unknown[] } } | null)
-                    ?.agents?.list;
+                  const list = (
+                    getCurrentConfigValue() as {
+                      agents?: { list?: unknown[] };
+                    } | null
+                  )?.agents?.list;
                   const entry = Array.isArray(list)
                     ? (list[index] as { skills?: unknown })
                     : undefined;
@@ -1285,8 +1310,11 @@ export function renderApp(state: AppViewState) {
                   if (index < 0) {
                     return;
                   }
-                  const list = (getCurrentConfigValue() as { agents?: { list?: unknown[] } } | null)
-                    ?.agents?.list;
+                  const list = (
+                    getCurrentConfigValue() as {
+                      agents?: { list?: unknown[] };
+                    } | null
+                  )?.agents?.list;
                   const basePath = ["agents", "list", index, "model"];
                   if (!modelId) {
                     removeConfigFormValue(state, basePath);
@@ -1330,8 +1358,11 @@ export function renderApp(state: AppViewState) {
                   if (index < 0) {
                     return;
                   }
-                  const list = (getCurrentConfigValue() as { agents?: { list?: unknown[] } } | null)
-                    ?.agents?.list;
+                  const list = (
+                    getCurrentConfigValue() as {
+                      agents?: { list?: unknown[] };
+                    } | null
+                  )?.agents?.list;
                   const basePath = ["agents", "list", index, "model"];
                   const entry = Array.isArray(list)
                     ? (list[index] as { model?: unknown })
@@ -1362,7 +1393,10 @@ export function renderApp(state: AppViewState) {
                   if (!primary) {
                     return;
                   }
-                  updateConfigFormValue(state, basePath, { primary, fallbacks: normalized });
+                  updateConfigFormValue(state, basePath, {
+                    primary,
+                    fallbacks: normalized,
+                  });
                 },
                 onSetDefault: (agentId) => {
                   if (!configValue) {
@@ -1433,7 +1467,10 @@ export function renderApp(state: AppViewState) {
                 onLoadExecApprovals: () => {
                   const target =
                     state.execApprovalsTarget === "node" && state.execApprovalsTargetNodeId
-                      ? { kind: "node" as const, nodeId: state.execApprovalsTargetNodeId }
+                      ? {
+                          kind: "node" as const,
+                          nodeId: state.execApprovalsTargetNodeId,
+                        }
                       : { kind: "gateway" as const };
                   return loadExecApprovals(state, target);
                 },
@@ -1470,7 +1507,10 @@ export function renderApp(state: AppViewState) {
                 onSaveExecApprovals: () => {
                   const target =
                     state.execApprovalsTarget === "node" && state.execApprovalsTargetNodeId
-                      ? { kind: "node" as const, nodeId: state.execApprovalsTargetNodeId }
+                      ? {
+                          kind: "node" as const,
+                          nodeId: state.execApprovalsTargetNodeId,
+                        }
                       : { kind: "gateway" as const };
                   return saveExecApprovals(state, target);
                 },
@@ -1549,7 +1589,9 @@ export function renderApp(state: AppViewState) {
                   return;
                 }
                 try {
-                  await state.client.request("sessions.reset", { key: state.sessionKey });
+                  await state.client.request("sessions.reset", {
+                    key: state.sessionKey,
+                  });
                   state.chatMessages = [];
                   state.chatStream = null;
                   state.chatRunId = null;
@@ -2042,7 +2084,10 @@ export function renderApp(state: AppViewState) {
                 truncated: state.logsTruncated,
                 onFilterTextChange: (next) => (state.logsFilterText = next),
                 onLevelToggle: (level, enabled) => {
-                  state.logsLevelFilters = { ...state.logsLevelFilters, [level]: enabled };
+                  state.logsLevelFilters = {
+                    ...state.logsLevelFilters,
+                    [level]: enabled,
+                  };
                 },
                 onToggleAutoFollow: (next) => (state.logsAutoFollow = next),
                 onRefresh: () => loadLogs(state, { reset: true }),

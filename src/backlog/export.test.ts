@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exportBacklog, exportSelfImprove } from "./export.js";
-import type { BacklogTask, SelfImproveEntry } from "./types.js";
+import type { Issue as BacklogTask, SelfImproveEntry } from "./types.js";
 
 describe("backlog/export", () => {
   let tempDir: string;
@@ -19,30 +19,38 @@ describe("backlog/export", () => {
   });
 
   describe("exportBacklog", () => {
-    it("creates backlog.md in .openclaw/export/", () => {
+    it("creates issues.md in .openclaw/export/", () => {
       const tasks: BacklogTask[] = [
         {
-          taskId: "TASK-001",
+          issueId: "TASK-001",
           title: "Fix login bug",
           description: "Users cannot log in with SSO",
           status: "inProgress",
           severity: "critical",
           complexity: "m",
-          touches: ["src/auth.ts", "src/login.ts"],
-          agentRole: "dev",
+          labels: ["src/auth.ts", "src/login.ts"],
+          assignee: "dev",
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: "2024-01-01T00:00:00.000Z",
           updatedAt: "2024-01-02T00:00:00.000Z",
           completedAt: null,
         },
         {
-          taskId: "TASK-002",
+          issueId: "TASK-002",
           title: "Write tests",
           description: "",
           status: "notStarted",
           severity: "medium",
           complexity: "s",
-          touches: [],
-          agentRole: null,
+          labels: [],
+          assignee: null,
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: "2024-01-01T00:00:00.000Z",
           updatedAt: "2024-01-01T00:00:00.000Z",
           completedAt: null,
@@ -53,11 +61,11 @@ describe("backlog/export", () => {
 
       const backlogPath = exportBacklog(tempDir, tasks, deps);
 
-      expect(backlogPath).toBe(path.join(tempDir, ".openclaw", "export", "backlog.md"));
+      expect(backlogPath).toBe(path.join(tempDir, ".openclaw", "export", "issues.md"));
       expect(existsSync(backlogPath)).toBe(true);
 
       const content = readFileSync(backlogPath, "utf-8");
-      expect(content).toContain("# Backlog");
+      expect(content).toContain("# Issues");
       expect(content).toContain("do not edit manually");
       expect(content).toContain("## Summary");
       expect(content).toContain("| inProgress | 1 |");
@@ -68,27 +76,35 @@ describe("backlog/export", () => {
     it("groups tasks by status in correct order", () => {
       const tasks: BacklogTask[] = [
         {
-          taskId: "TASK-003",
+          issueId: "TASK-003",
           title: "Done task",
           description: "A completed task",
           status: "done",
           severity: "low",
           complexity: "xs",
-          touches: [],
-          agentRole: null,
+          labels: [],
+          assignee: null,
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: "2024-01-01T00:00:00.000Z",
           updatedAt: "2024-01-01T00:00:00.000Z",
           completedAt: "2024-01-02T00:00:00.000Z",
         },
         {
-          taskId: "TASK-004",
+          issueId: "TASK-004",
           title: "In progress task",
           description: "",
           status: "inProgress",
           severity: "high",
           complexity: "l",
-          touches: ["src/main.ts"],
-          agentRole: "dev",
+          labels: ["src/main.ts"],
+          assignee: "dev",
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: "2024-01-01T00:00:00.000Z",
           updatedAt: "2024-01-01T00:00:00.000Z",
           completedAt: null,
@@ -107,14 +123,18 @@ describe("backlog/export", () => {
     it("includes task details: severity, complexity, agent, deps, touches", () => {
       const tasks: BacklogTask[] = [
         {
-          taskId: "TASK-010",
+          issueId: "TASK-010",
           title: "Complex feature",
           description: "A detailed description",
           status: "blocked",
           severity: "high",
           complexity: "xl",
-          touches: ["src/feature.ts", "src/utils.ts"],
-          agentRole: "qa",
+          labels: ["src/feature.ts", "src/utils.ts"],
+          assignee: "qa",
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: "2024-01-01T00:00:00.000Z",
           updatedAt: "2024-01-01T00:00:00.000Z",
           completedAt: null,
@@ -128,9 +148,9 @@ describe("backlog/export", () => {
 
       expect(content).toContain("### TASK-010: Complex feature");
       expect(content).toContain("**Severity:** high | **Complexity:** xl");
-      expect(content).toContain("**Agent:** qa");
+      expect(content).toContain("**Assignee:** qa");
       expect(content).toContain("**Depends on:** TASK-005");
-      expect(content).toContain("**Touches:** src/feature.ts, src/utils.ts");
+      expect(content).toContain("**Labels:** src/feature.ts, src/utils.ts");
       expect(content).toContain("A detailed description");
     });
 
@@ -138,7 +158,7 @@ describe("backlog/export", () => {
       const backlogPath = exportBacklog(tempDir, [], []);
       const content = readFileSync(backlogPath, "utf-8");
 
-      expect(content).toContain("# Backlog");
+      expect(content).toContain("# Issues");
       expect(content).toContain("| **Total** | **0** |");
     });
 

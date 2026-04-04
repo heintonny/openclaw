@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { BacklogTask, SelfImproveEntry } from "./types.js";
+import type { Issue, SelfImproveEntry } from "./types.js";
 
-export function exportBacklog(
+export function exportIssues(
   repoPath: string,
-  tasks: BacklogTask[],
+  tasks: Issue[],
   deps: Array<{ taskId: string; dependsOn: string }>,
 ): string {
   const exportDir = path.join(repoPath, ".openclaw", "export");
@@ -12,11 +12,11 @@ export function exportBacklog(
     mkdirSync(exportDir, { recursive: true });
   }
 
-  // Generate backlog.md
-  let md = "# Backlog\n\n";
+  // Generate issues.md
+  let md = "# Issues\n\n";
   md += `> Generated ${new Date().toISOString()} — do not edit manually\n\n`;
 
-  const byStatus: Record<string, BacklogTask[]> = {};
+  const byStatus: Record<string, Issue[]> = {};
   for (const t of tasks) {
     (byStatus[t.status] ??= []).push(t);
   }
@@ -38,17 +38,17 @@ export function exportBacklog(
     }
     md += `## ${status} (${items.length})\n\n`;
     for (const t of items) {
-      const taskDeps = deps.filter((d) => d.taskId === t.taskId).map((d) => d.dependsOn);
-      md += `### ${t.taskId}: ${t.title}\n`;
+      const taskDeps = deps.filter((d) => d.taskId === t.issueId).map((d) => d.dependsOn);
+      md += `### ${t.issueId}: ${t.title}\n`;
       md += `- **Severity:** ${t.severity} | **Complexity:** ${t.complexity}\n`;
-      if (t.agentRole) {
-        md += `- **Agent:** ${t.agentRole}\n`;
+      if (t.assignee) {
+        md += `- **Assignee:** ${t.assignee}\n`;
       }
       if (taskDeps.length > 0) {
         md += `- **Depends on:** ${taskDeps.join(", ")}\n`;
       }
-      if (t.touches.length > 0) {
-        md += `- **Touches:** ${t.touches.join(", ")}\n`;
+      if (t.labels.length > 0) {
+        md += `- **Labels:** ${t.labels.join(", ")}\n`;
       }
       if (t.description) {
         md += `\n${t.description}\n`;
@@ -57,10 +57,13 @@ export function exportBacklog(
     }
   }
 
-  const backlogPath = path.join(exportDir, "backlog.md");
-  writeFileSync(backlogPath, md, "utf-8");
-  return backlogPath;
+  const issuesPath = path.join(exportDir, "issues.md");
+  writeFileSync(issuesPath, md, "utf-8");
+  return issuesPath;
 }
+
+// Backward-compatible alias
+export const exportBacklog = exportIssues;
 
 export function exportSelfImprove(repoPath: string, entries: SelfImproveEntry[]): string {
   const exportDir = path.join(repoPath, ".openclaw", "export");

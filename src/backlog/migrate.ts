@@ -68,21 +68,25 @@ export function migrateFromTasksJson(
   try {
     for (const entry of entries) {
       // Skip if already exists
-      if (db.getBacklogTask(entry.id)) {
+      if (db.getIssue(entry.id)) {
         skipped++;
         continue;
       }
 
       const now = new Date().toISOString();
-      db.addBacklogTask({
-        taskId: entry.id,
+      db.addIssue({
+        issueId: entry.id,
         title: entry.title,
         description: entry.description || "",
-        status: mapStatus(entry.status) as import("./types.js").BacklogStatus,
-        severity: (entry.severity || "medium") as import("./types.js").BacklogSeverity,
-        complexity: (entry.complexity || "m") as import("./types.js").BacklogComplexity,
-        touches: entry.touches || [],
-        agentRole: entry.assignee || null,
+        status: mapStatus(entry.status) as import("./types.js").IssueStatus,
+        severity: (entry.severity || "medium") as import("./types.js").IssueSeverity,
+        complexity: (entry.complexity || "m") as import("./types.js").IssueComplexity,
+        labels: entry.touches || [],
+        assignee: entry.assignee || null,
+        sourceType: "internal",
+        sourceExternalId: null,
+        sourceExternalUrl: null,
+        sourceSyncedAt: null,
         createdAt: now,
         updatedAt: now,
         completedAt:
@@ -94,14 +98,14 @@ export function migrateFromTasksJson(
       // Import dependencies
       if (entry.depends_on) {
         for (const dep of entry.depends_on) {
-          db.addDependency({ taskId: entry.id, dependsOn: dep });
+          db.addDependency({ issueId: entry.id, dependsOn: dep });
         }
       }
 
       // "blocks" is the reverse: if A blocks B, then B depends on A
       if (entry.blocks) {
         for (const blocked of entry.blocks) {
-          db.addDependency({ taskId: blocked, dependsOn: entry.id });
+          db.addDependency({ issueId: blocked, dependsOn: entry.id });
         }
       }
 

@@ -12,13 +12,13 @@ import { loadAgentFiles } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
-import { loadBacklog } from "./controllers/backlog.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
 import { loadCronJobs, loadCronRuns, loadCronStatus } from "./controllers/cron.ts";
 import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
+import { loadAllIssues } from "./controllers/issues.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -238,19 +238,14 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "projects") {
     await loadProjects(host as unknown as OpenClawApp);
   }
-  if (host.tab === "backlog") {
+  if (host.tab === "issues") {
     const app = host as unknown as OpenClawApp;
-    // Ensure projects list is loaded for auto-select
+    // Ensure projects list is loaded for filter chips
     if (app.projectsList.length === 0) {
       await loadProjects(app);
     }
-    // Auto-select if only one project
-    if (!app.projectsSelectedId && app.projectsList.length === 1) {
-      app.projectsSelectedId = app.projectsList[0].projectId;
-    }
-    if (app.projectsSelectedId) {
-      await loadBacklog(app);
-    }
+    // Always load all issues from all projects
+    await loadAllIssues(app);
   }
   if (host.tab === "skills") {
     await loadSkills(host as unknown as OpenClawApp);

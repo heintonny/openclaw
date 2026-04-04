@@ -3,19 +3,23 @@ import { hasCycle, planBatch, topologicalSort } from "./deps.js";
 import type { BacklogDependency, BacklogTask } from "./types.js";
 
 function makeTask(
-  taskId: string,
+  issueId: string,
   status: BacklogTask["status"] = "notStarted",
   severity: BacklogTask["severity"] = "medium",
 ): BacklogTask {
   return {
-    taskId,
-    title: `Task ${taskId}`,
+    issueId,
+    title: `Task ${issueId}`,
     description: "",
     status,
     severity,
     complexity: "m",
-    touches: [],
-    agentRole: null,
+    labels: [],
+    assignee: null,
+    sourceType: "internal",
+    sourceExternalId: null,
+    sourceExternalUrl: null,
+    sourceSyncedAt: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: null,
@@ -25,25 +29,25 @@ function makeTask(
 describe("hasCycle", () => {
   it("returns true for A→B→A (direct cycle)", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "B", dependsOn: "A" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "B", dependsOn: "A" },
     ];
     expect(hasCycle(deps)).toBe(true);
   });
 
   it("returns true for A→B→C→A (indirect cycle)", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "B", dependsOn: "C" },
-      { taskId: "C", dependsOn: "A" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "B", dependsOn: "C" },
+      { issueId: "C", dependsOn: "A" },
     ];
     expect(hasCycle(deps)).toBe(true);
   });
 
   it("returns false for A→B→C (linear, no cycle)", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "B", dependsOn: "C" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "B", dependsOn: "C" },
     ];
     expect(hasCycle(deps)).toBe(false);
   });
@@ -54,10 +58,10 @@ describe("hasCycle", () => {
 
   it("returns false for diamond shape (A→B, A→C, B→D, C→D)", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "A", dependsOn: "C" },
-      { taskId: "B", dependsOn: "D" },
-      { taskId: "C", dependsOn: "D" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "A", dependsOn: "C" },
+      { issueId: "B", dependsOn: "D" },
+      { issueId: "C", dependsOn: "D" },
     ];
     expect(hasCycle(deps)).toBe(false);
   });
@@ -66,8 +70,8 @@ describe("hasCycle", () => {
 describe("topologicalSort", () => {
   it("produces valid ordering for linear chain A→B→C", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "B", dependsOn: "C" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "B", dependsOn: "C" },
     ];
     const order = topologicalSort(deps);
     expect(order.indexOf("C")).toBeLessThan(order.indexOf("B"));
@@ -76,10 +80,10 @@ describe("topologicalSort", () => {
 
   it("produces valid ordering for diamond (A→B, A→C, B→D, C→D)", () => {
     const deps: BacklogDependency[] = [
-      { taskId: "A", dependsOn: "B" },
-      { taskId: "A", dependsOn: "C" },
-      { taskId: "B", dependsOn: "D" },
-      { taskId: "C", dependsOn: "D" },
+      { issueId: "A", dependsOn: "B" },
+      { issueId: "A", dependsOn: "C" },
+      { issueId: "B", dependsOn: "D" },
+      { issueId: "C", dependsOn: "D" },
     ];
     const order = topologicalSort(deps);
     // D must come before B and C, B and C before A
@@ -94,7 +98,7 @@ describe("topologicalSort", () => {
   });
 
   it("includes all nodes", () => {
-    const deps: BacklogDependency[] = [{ taskId: "X", dependsOn: "Y" }];
+    const deps: BacklogDependency[] = [{ issueId: "X", dependsOn: "Y" }];
     const order = topologicalSort(deps);
     expect(order).toContain("X");
     expect(order).toContain("Y");
@@ -116,11 +120,11 @@ describe("planBatch", () => {
       makeTask("T3", "notStarted"),
     ];
     const deps: BacklogDependency[] = [
-      { taskId: "T1", dependsOn: "T2" }, // T1 depends on T2 (done) → ready
-      { taskId: "T3", dependsOn: "T1" }, // T3 depends on T1 (notStarted) → blocked
+      { issueId: "T1", dependsOn: "T2" }, // T1 depends on T2 (done) → ready
+      { issueId: "T3", dependsOn: "T1" }, // T3 depends on T1 (notStarted) → blocked
     ];
     const result = planBatch(tasks, deps);
-    const ids = result.map((t) => t.taskId);
+    const ids = result.map((t) => t.issueId);
     expect(ids).toContain("T1");
     expect(ids).not.toContain("T3");
   });
@@ -134,7 +138,7 @@ describe("planBatch", () => {
     ];
     const result = planBatch(tasks, []);
     expect(result).toHaveLength(1);
-    expect(result[0].taskId).toBe("T4");
+    expect(result[0].issueId).toBe("T4");
   });
 
   it("respects maxBatchSize", () => {
@@ -158,16 +162,16 @@ describe("planBatch", () => {
       makeTask("high-task", "notStarted", "high"),
     ];
     const result = planBatch(tasks, []);
-    expect(result[0].taskId).toBe("critical-task");
-    expect(result[1].taskId).toBe("high-task");
-    expect(result[2].taskId).toBe("medium-task");
-    expect(result[3].taskId).toBe("low-task");
+    expect(result[0].issueId).toBe("critical-task");
+    expect(result[1].issueId).toBe("high-task");
+    expect(result[2].issueId).toBe("medium-task");
+    expect(result[3].issueId).toBe("low-task");
   });
 
   it("returns empty array when no tasks are ready", () => {
     const tasks = [makeTask("T1", "notStarted")];
     const deps: BacklogDependency[] = [
-      { taskId: "T1", dependsOn: "T2" }, // T2 doesn't exist in tasks
+      { issueId: "T1", dependsOn: "T2" }, // T2 doesn't exist in tasks
     ];
     const result = planBatch(tasks, deps);
     expect(result).toHaveLength(0);

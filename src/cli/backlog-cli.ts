@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 
-export function registerBacklogCli(program: Command) {
-  const cmd = program.command("backlog").description("Manage project task backlogs");
+export function registerIssuesCli(program: Command) {
+  const cmd = program.command("issues").description("Manage project issues");
 
   cmd
     .command("init")
@@ -16,12 +16,13 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("add")
-    .description("Add a task to the backlog")
-    .requiredOption("--title <title>", "Task title")
-    .option("--description <desc>", "Task description", "")
+    .description("Add an issue")
+    .requiredOption("--title <title>", "Issue title")
+    .option("--description <desc>", "Issue description", "")
     .option("--severity <level>", "Severity: critical, high, medium, low", "medium")
     .option("--complexity <size>", "Complexity: xs, s, m, l, xl", "m")
-    .option("--touches <files>", "Comma-separated files this task affects")
+    .option("--labels <labels>", "Comma-separated labels")
+    .option("--touches <files>", "Comma-separated files (alias for --labels)")
     .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
@@ -29,24 +30,30 @@ export function registerBacklogCli(program: Command) {
       const dbPath = resolveProjectSqlitePath(repoPath);
       const dbInfo = openProjectDatabase(dbPath);
       try {
-        const taskId = `TASK-${String(Date.now()).slice(-6)}`;
-        const touches = opts.touches
-          ? (opts.touches as string).split(",").map((s: string) => s.trim())
-          : [];
-        dbInfo.addBacklogTask({
-          taskId,
+        const issueId = `TASK-${String(Date.now()).slice(-6)}`;
+        const labels = opts.labels
+          ? (opts.labels as string).split(",").map((s: string) => s.trim())
+          : opts.touches
+            ? (opts.touches as string).split(",").map((s: string) => s.trim())
+            : [];
+        dbInfo.addIssue({
+          issueId,
           title: opts.title as string,
           description: (opts.description as string) || "",
           severity: opts.severity,
           status: "notStarted",
           complexity: opts.complexity,
-          touches,
-          agentRole: null,
+          labels,
+          assignee: null,
+          sourceType: "internal",
+          sourceExternalId: null,
+          sourceExternalUrl: null,
+          sourceSyncedAt: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           completedAt: null,
         });
-        console.log(`Added ${taskId}: ${opts.title}`);
+        console.log(`Added ${issueId}: ${opts.title}`);
       } finally {
         dbInfo.db.close();
       }
@@ -54,7 +61,7 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("list")
-    .description("List backlog tasks")
+    .description("List issues")
     .option("--status <status>", "Filter by status")
     .option("--severity <level>", "Filter by severity")
     .option("--json", "Output as JSON", false)
@@ -65,22 +72,22 @@ export function registerBacklogCli(program: Command) {
       const dbPath = resolveProjectSqlitePath(repoPath);
       const dbInfo = openProjectDatabase(dbPath);
       try {
-        let tasks = dbInfo.listBacklogTasks();
+        let issues = dbInfo.listIssues();
         if (opts.status) {
-          tasks = tasks.filter((t: { status: string }) => t.status === opts.status);
+          issues = issues.filter((t: { status: string }) => t.status === opts.status);
         }
         if (opts.severity) {
-          tasks = tasks.filter((t: { severity: string }) => t.severity === opts.severity);
+          issues = issues.filter((t: { severity: string }) => t.severity === opts.severity);
         }
 
         if (opts.json) {
-          console.log(JSON.stringify(tasks, null, 2));
+          console.log(JSON.stringify(issues, null, 2));
         } else {
-          if (tasks.length === 0) {
-            console.log("No tasks found.");
+          if (issues.length === 0) {
+            console.log("No issues found.");
             return;
           }
-          for (const t of tasks) {
+          for (const t of issues) {
             const statusIcon =
               t.status === "done"
                 ? "✅"
@@ -90,10 +97,10 @@ export function registerBacklogCli(program: Command) {
                     ? "🚫"
                     : "⬜";
             console.log(
-              `${statusIcon} ${t.taskId} [${t.severity}/${t.complexity}] ${t.title} (${t.status})`,
+              `${statusIcon} ${t.issueId} [${t.severity}/${t.complexity}] ${t.title} (${t.status})`,
             );
           }
-          console.log(`\n${tasks.length} task(s)`);
+          console.log(`\n${issues.length} issue(s)`);
         }
       } finally {
         dbInfo.db.close();
@@ -102,43 +109,43 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("update")
-    .description("Update a task")
-    .argument("<taskId>", "Task ID to update")
+    .description("Update an issue")
+    .argument("<issueId>", "Issue ID to update")
     .option("--status <status>", "New status")
     .option("--severity <level>", "New severity")
     .option("--complexity <size>", "New complexity")
     .option("--title <title>", "New title")
     .option("--path <path>", "Repository path (default: cwd)")
-    .action(async (taskId, opts) => {
+    .action(async (issueId, opts) => {
       const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
       const repoPath = (opts.path as string) || process.cwd();
       const dbPath = resolveProjectSqlitePath(repoPath);
       const dbInfo = openProjectDatabase(dbPath);
       try {
-        const task = dbInfo.getBacklogTask(taskId as string);
-        if (!task) {
-          console.error(`Task ${taskId} not found`);
+        const issue = dbInfo.getIssue(issueId as string);
+        if (!issue) {
+          console.error(`Issue ${issueId} not found`);
           return;
         }
         if (opts.status) {
-          task.status = opts.status;
+          issue.status = opts.status;
         }
         if (opts.severity) {
-          task.severity = opts.severity;
+          issue.severity = opts.severity;
         }
         if (opts.complexity) {
-          task.complexity = opts.complexity;
+          issue.complexity = opts.complexity;
         }
         if (opts.title) {
-          task.title = opts.title as string;
+          issue.title = opts.title as string;
         }
-        task.updatedAt = new Date().toISOString();
+        issue.updatedAt = new Date().toISOString();
         if (opts.status === "done") {
-          task.completedAt = new Date().toISOString();
+          issue.completedAt = new Date().toISOString();
         }
 
-        dbInfo.updateBacklogTask(task);
-        console.log(`Updated ${taskId}`);
+        dbInfo.updateIssue(issue);
+        console.log(`Updated ${issueId}`);
       } finally {
         dbInfo.db.close();
       }
@@ -146,7 +153,7 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("status")
-    .description("Show backlog summary")
+    .description("Show issues summary")
     .option("--path <path>", "Repository path (default: cwd)")
     .option("--json", "Output as JSON", false)
     .action(async (opts) => {
@@ -155,15 +162,15 @@ export function registerBacklogCli(program: Command) {
       const dbPath = resolveProjectSqlitePath(repoPath);
       const dbInfo = openProjectDatabase(dbPath);
       try {
-        const tasks = dbInfo.listBacklogTasks();
+        const issues = dbInfo.listIssues();
         const summary: Record<string, number> = {};
-        for (const t of tasks) {
+        for (const t of issues) {
           summary[t.status] = (summary[t.status] || 0) + 1;
         }
         if (opts.json) {
           console.log(JSON.stringify(summary, null, 2));
         } else {
-          console.log("Backlog Summary:");
+          console.log("Issues Summary:");
           for (const [status, count] of Object.entries(summary)) {
             console.log(`  ${status}: ${count}`);
           }
@@ -175,23 +182,24 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("export")
-    .description("Export backlog and selfimprove to markdown files")
+    .description("Export issues and selfimprove to markdown files")
     .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
-      const { exportBacklog, exportSelfImprove } = await import("../backlog/export.js");
+      const { exportIssues, exportSelfImprove } = await import("../backlog/export.js");
       const repoPath = (opts.path as string) || process.cwd();
       const dbPath = resolveProjectSqlitePath(repoPath);
       const db = openProjectDatabase(dbPath);
       try {
-        const tasks = db.listBacklogTasks();
+        const issues = db.listIssues();
         // Collect all deps
         const allDeps: Array<{ taskId: string; dependsOn: string }> = [];
-        for (const t of tasks) {
-          allDeps.push(...db.listDependencies(t.taskId));
+        for (const t of issues) {
+          const deps = db.listDependencies(t.issueId);
+          allDeps.push(...deps.map((d) => ({ taskId: d.issueId, dependsOn: d.dependsOn })));
         }
-        const backlogPath = exportBacklog(repoPath, tasks, allDeps);
-        console.log(`Exported backlog to ${backlogPath}`);
+        const issuesPath = exportIssues(repoPath, issues, allDeps);
+        console.log(`Exported issues to ${issuesPath}`);
 
         const entries = db.listSelfImprove();
         if (entries.length > 0) {
@@ -205,7 +213,7 @@ export function registerBacklogCli(program: Command) {
 
   cmd
     .command("migrate")
-    .description("Migrate TASKS.json to SQLite backlog")
+    .description("Migrate TASKS.json to SQLite issues")
     .option("--path <path>", "Repository path (default: cwd)")
     .option("--file <file>", "Path to TASKS.json (auto-detected if omitted)")
     .action(async (opts) => {
@@ -215,3 +223,6 @@ export function registerBacklogCli(program: Command) {
       console.log(`Migration complete: ${result.imported} imported, ${result.skipped} skipped`);
     });
 }
+
+// Backward-compatible alias
+export const registerBacklogCli = registerIssuesCli;

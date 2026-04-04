@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
-import type { BacklogDependency, BacklogTask, SelfImproveEntry } from "./types.js";
+import type { IssueDependency, Issue, SelfImproveEntry } from "./types.js";
 
 export function resolveProjectSqlitePath(repoPath: string): string {
   return path.join(repoPath, ".openclaw", "project.sqlite");
@@ -22,16 +22,20 @@ export function initProjectDirectory(repoPath: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapRowToBacklogTask(row: any): BacklogTask {
+function mapRowToIssue(row: any): Issue {
   return {
-    taskId: row.task_id,
+    issueId: row.issue_id,
     title: row.title,
     description: row.description,
     status: row.status,
     severity: row.severity,
     complexity: row.complexity,
-    touches: JSON.parse(row.touches),
-    agentRole: row.agent_role,
+    labels: JSON.parse(row.labels),
+    assignee: row.assignee,
+    sourceType: row.source_type ?? "internal",
+    sourceExternalId: row.source_external_id ?? null,
+    sourceExternalUrl: row.source_external_url ?? null,
+    sourceSyncedAt: row.source_synced_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -44,21 +48,79 @@ export function openProjectDatabase(sqlitePath: string) {
 
   db.exec("PRAGMA journal_mode=WAL");
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS backlog (
-      task_id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'notStarted',
-      severity TEXT NOT NULL DEFAULT 'medium',
-      complexity TEXT NOT NULL DEFAULT 'm',
-      touches TEXT NOT NULL DEFAULT '[]',
-      agent_role TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      completed_at TEXT
-    );
-  `);
+  // Migration: rename backlog → issues if old table exists
+  const hasBacklog = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='backlog'`)
+    .get();
+  const hasIssues = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='issues'`)
+    .get();
+
+  if (hasBacklog && !hasIssues) {
+    // Migrate from old backlog table to new issues table
+    db.exec(`
+      CREATE TABLE issues (
+        issue_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'notStarted',
+        severity TEXT NOT NULL DEFAULT 'medium',
+        complexity TEXT NOT NULL DEFAULT 'm',
+        labels TEXT NOT NULL DEFAULT '[]',
+        assignee TEXT,
+        source_type TEXT NOT NULL DEFAULT 'internal',
+        source_external_id TEXT,
+        source_external_url TEXT,
+        source_synced_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT
+      );
+    `);
+    db.exec(`
+      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee, source_type, created_at, updated_at, completed_at)
+      SELECT task_id, title, description, status, severity, complexity, touches, agent_role,
+             'internal', created_at, updated_at, completed_at
+      FROM backlog;
+    `);
+    db.exec(`DROP TABLE backlog;`);
+  }
+
+  if (!hasBacklog && !hasIssues) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS issues (
+        issue_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'notStarted',
+        severity TEXT NOT NULL DEFAULT 'medium',
+        complexity TEXT NOT NULL DEFAULT 'm',
+        labels TEXT NOT NULL DEFAULT '[]',
+        assignee TEXT,
+        source_type TEXT NOT NULL DEFAULT 'internal',
+        source_external_id TEXT,
+        source_external_url TEXT,
+        source_synced_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT
+      );
+    `);
+  }
+
+  // If issues table exists but is missing new columns (e.g. created fresh before migration),
+  // add them now
+  if (hasIssues && !hasBacklog) {
+    // Check if source_type column exists
+    try {
+      db.prepare(`SELECT source_type FROM issues LIMIT 1`).get();
+    } catch {
+      db.exec(`ALTER TABLE issues ADD COLUMN source_type TEXT NOT NULL DEFAULT 'internal';`);
+      db.exec(`ALTER TABLE issues ADD COLUMN source_external_id TEXT;`);
+      db.exec(`ALTER TABLE issues ADD COLUMN source_external_url TEXT;`);
+      db.exec(`ALTER TABLE issues ADD COLUMN source_synced_at TEXT;`);
+    }
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS dependencies (
@@ -100,29 +162,36 @@ export function openProjectDatabase(sqlitePath: string) {
     );
   `);
 
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_backlog_status ON backlog(status);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);`);
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_external ON issues(source_type, source_external_id) WHERE source_external_id IS NOT NULL;`,
+  );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_execution_runs_task_id ON execution_runs(task_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_selfimprove_task_id ON selfimprove(task_id);`);
 
   const statements = {
-    insertBacklogTask: db.prepare(`
-      INSERT INTO backlog (task_id, title, description, status, severity, complexity, touches, agent_role, created_at, updated_at, completed_at)
-      VALUES (@taskId, @title, @description, @status, @severity, @complexity, @touches, @agentRole, @createdAt, @updatedAt, @completedAt)
+    insertIssue: db.prepare(`
+      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee, source_type, source_external_id, source_external_url, source_synced_at, created_at, updated_at, completed_at)
+      VALUES (@issueId, @title, @description, @status, @severity, @complexity, @labels, @assignee, @sourceType, @sourceExternalId, @sourceExternalUrl, @sourceSyncedAt, @createdAt, @updatedAt, @completedAt)
     `),
-    getBacklogTask: db.prepare(`SELECT * FROM backlog WHERE task_id = ?`),
-    listBacklogTasks: db.prepare(`SELECT * FROM backlog ORDER BY created_at ASC`),
-    updateBacklogTask: db.prepare(`
-      UPDATE backlog SET
+    getIssue: db.prepare(`SELECT * FROM issues WHERE issue_id = ?`),
+    listIssues: db.prepare(`SELECT * FROM issues ORDER BY created_at ASC`),
+    updateIssue: db.prepare(`
+      UPDATE issues SET
         title = @title,
         description = @description,
         status = @status,
         severity = @severity,
         complexity = @complexity,
-        touches = @touches,
-        agent_role = @agentRole,
+        labels = @labels,
+        assignee = @assignee,
+        source_type = @sourceType,
+        source_external_id = @sourceExternalId,
+        source_external_url = @sourceExternalUrl,
+        source_synced_at = @sourceSyncedAt,
         updated_at = @updatedAt,
         completed_at = @completedAt
-      WHERE task_id = @taskId
+      WHERE issue_id = @issueId
     `),
     insertDependency: db.prepare(
       `INSERT OR IGNORE INTO dependencies (task_id, depends_on) VALUES (@taskId, @dependsOn)`,
@@ -143,61 +212,82 @@ export function openProjectDatabase(sqlitePath: string) {
   return {
     db,
     statements,
-    addBacklogTask(task: BacklogTask) {
-      statements.insertBacklogTask.run({
-        taskId: task.taskId,
-        title: task.title,
-        description: task.description,
-        status: task.status,
-        severity: task.severity,
-        complexity: task.complexity,
-        touches: JSON.stringify(task.touches),
-        agentRole: task.agentRole ?? null,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        completedAt: task.completedAt ?? null,
+    addIssue(issue: Issue) {
+      statements.insertIssue.run({
+        issueId: issue.issueId,
+        title: issue.title,
+        description: issue.description,
+        status: issue.status,
+        severity: issue.severity,
+        complexity: issue.complexity,
+        labels: JSON.stringify(issue.labels),
+        assignee: issue.assignee ?? null,
+        sourceType: issue.sourceType ?? "internal",
+        sourceExternalId: issue.sourceExternalId ?? null,
+        sourceExternalUrl: issue.sourceExternalUrl ?? null,
+        sourceSyncedAt: issue.sourceSyncedAt ?? null,
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+        completedAt: issue.completedAt ?? null,
       });
     },
-    getBacklogTask(taskId: string): BacklogTask | undefined {
-      const row = statements.getBacklogTask.get(taskId);
-      return row ? mapRowToBacklogTask(row) : undefined;
+    getIssue(issueId: string): Issue | undefined {
+      const row = statements.getIssue.get(issueId);
+      return row ? mapRowToIssue(row) : undefined;
     },
-    listBacklogTasks(): BacklogTask[] {
+    listIssues(): Issue[] {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = statements.listBacklogTasks.all() as any[];
-      return rows.map(mapRowToBacklogTask);
+      const rows = statements.listIssues.all() as any[];
+      return rows.map(mapRowToIssue);
     },
-    updateBacklogTask(task: BacklogTask) {
-      statements.updateBacklogTask.run({
-        taskId: task.taskId,
-        title: task.title,
-        description: task.description,
-        status: task.status,
-        severity: task.severity,
-        complexity: task.complexity,
-        touches: JSON.stringify(task.touches),
-        agentRole: task.agentRole ?? null,
-        updatedAt: task.updatedAt,
-        completedAt: task.completedAt ?? null,
+    updateIssue(issue: Issue) {
+      statements.updateIssue.run({
+        issueId: issue.issueId,
+        title: issue.title,
+        description: issue.description,
+        status: issue.status,
+        severity: issue.severity,
+        complexity: issue.complexity,
+        labels: JSON.stringify(issue.labels),
+        assignee: issue.assignee ?? null,
+        sourceType: issue.sourceType ?? "internal",
+        sourceExternalId: issue.sourceExternalId ?? null,
+        sourceExternalUrl: issue.sourceExternalUrl ?? null,
+        sourceSyncedAt: issue.sourceSyncedAt ?? null,
+        updatedAt: issue.updatedAt,
+        completedAt: issue.completedAt ?? null,
       });
     },
-    addDependency(dependency: BacklogDependency) {
+    // Backward-compatible aliases
+    addBacklogTask(task: Issue) {
+      this.addIssue(task);
+    },
+    getBacklogTask(taskId: string) {
+      return this.getIssue(taskId);
+    },
+    listBacklogTasks() {
+      return this.listIssues();
+    },
+    updateBacklogTask(task: Issue) {
+      this.updateIssue(task);
+    },
+    addDependency(dependency: IssueDependency) {
       statements.insertDependency.run({
-        taskId: dependency.taskId,
+        taskId: dependency.issueId,
         dependsOn: dependency.dependsOn,
       });
     },
-    removeDependency(dependency: BacklogDependency) {
+    removeDependency(dependency: IssueDependency) {
       statements.deleteDependency.run({
-        taskId: dependency.taskId,
+        taskId: dependency.issueId,
         dependsOn: dependency.dependsOn,
       });
     },
-    listDependencies(taskId: string): BacklogDependency[] {
+    listDependencies(issueId: string): IssueDependency[] {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = statements.listDependencies.all(taskId) as any[];
+      const rows = statements.listDependencies.all(issueId) as any[];
       return rows.map((row) => ({
-        taskId: row.task_id,
+        issueId: row.task_id,
         dependsOn: row.depends_on,
       }));
     },
@@ -240,35 +330,47 @@ export function openProjectDatabase(sqlitePath: string) {
       return !!statements.checkTableExists.get(tableName);
     },
     addTask(params: {
-      taskId: string;
+      taskId?: string;
+      issueId?: string;
       title: string;
       description?: string;
       severity?: string;
       complexity?: string;
       touches?: string[];
+      labels?: string[];
       agentRole?: string;
+      assignee?: string;
+      sourceType?: string;
+      sourceExternalId?: string;
+      sourceExternalUrl?: string;
+      sourceSyncedAt?: string;
     }) {
       const now = new Date().toISOString();
-      this.addBacklogTask({
-        taskId: params.taskId,
+      const id = params.issueId || params.taskId || `TASK-${String(Date.now()).slice(-6)}`;
+      this.addIssue({
+        issueId: id,
         title: params.title,
         description: params.description || "",
         status: "notStarted",
-        severity: (params.severity || "medium") as BacklogTask["severity"],
-        complexity: (params.complexity || "m") as BacklogTask["complexity"],
-        touches: params.touches || [],
-        agentRole: params.agentRole || null,
+        severity: (params.severity || "medium") as Issue["severity"],
+        complexity: (params.complexity || "m") as Issue["complexity"],
+        labels: params.labels || params.touches || [],
+        assignee: params.assignee || params.agentRole || null,
+        sourceType: (params.sourceType || "internal") as Issue["sourceType"],
+        sourceExternalId: params.sourceExternalId || null,
+        sourceExternalUrl: params.sourceExternalUrl || null,
+        sourceSyncedAt: params.sourceSyncedAt || null,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
       });
     },
     updateTask(taskId: string, updates: Record<string, string>) {
-      const existing = this.getBacklogTask(taskId);
+      const existing = this.getIssue(taskId);
       if (!existing) {
-        throw new Error(`Task ${taskId} not found`);
+        throw new Error(`Issue ${taskId} not found`);
       }
-      const updated: BacklogTask = {
+      const updated: Issue = {
         ...existing,
         ...updates,
         updatedAt: new Date().toISOString(),
@@ -276,15 +378,15 @@ export function openProjectDatabase(sqlitePath: string) {
       if (updates.status === "done" && !existing.completedAt) {
         updated.completedAt = new Date().toISOString();
       }
-      this.updateBacklogTask(updated);
+      this.updateIssue(updated);
     },
     getSummary(): Record<string, number> {
-      const tasks = this.listBacklogTasks();
+      const issues = this.listIssues();
       const summary: Record<string, number> = {};
-      for (const t of tasks) {
+      for (const t of issues) {
         summary[t.status] = (summary[t.status] || 0) + 1;
       }
-      summary.total = tasks.length;
+      summary.total = issues.length;
       return summary;
     },
     getDetailedStats(): {
@@ -298,7 +400,7 @@ export function openProjectDatabase(sqlitePath: string) {
       completedLast30d: number;
       blockedCritical: Array<{ taskId: string; title: string; severity: string }>;
     } {
-      const tasks = this.listBacklogTasks();
+      const issues = this.listIssues();
       const statusBreakdown: Record<string, number> = {};
       const severityBreakdown: Record<string, number> = {};
       const complexityBreakdown: Record<string, number> = {};
@@ -310,7 +412,7 @@ export function openProjectDatabase(sqlitePath: string) {
       const day30 = now - 30 * 86400000;
       const blockedCritical: Array<{ taskId: string; title: string; severity: string }> = [];
 
-      for (const t of tasks) {
+      for (const t of issues) {
         statusBreakdown[t.status] = (statusBreakdown[t.status] || 0) + 1;
         if (t.status !== "done" && t.status !== "cancelled") {
           severityBreakdown[t.severity] = (severityBreakdown[t.severity] || 0) + 1;
@@ -334,7 +436,7 @@ export function openProjectDatabase(sqlitePath: string) {
             t.status !== "cancelled" &&
             (t.severity === "critical" || t.severity === "high"))
         ) {
-          blockedCritical.push({ taskId: t.taskId, title: t.title, severity: t.severity });
+          blockedCritical.push({ taskId: t.issueId, title: t.title, severity: t.severity });
         }
       }
 
@@ -345,7 +447,7 @@ export function openProjectDatabase(sqlitePath: string) {
         statusBreakdown,
         severityBreakdown,
         complexityBreakdown,
-        total: tasks.length,
+        total: issues.length,
         selfImproveUnapplied,
         lastActivity,
         completedLast7d,
@@ -355,22 +457,29 @@ export function openProjectDatabase(sqlitePath: string) {
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     listTasks(filters?: { status?: string; severity?: string }): Record<string, unknown>[] {
-      let tasks = this.listBacklogTasks();
+      let issues = this.listIssues();
       if (filters?.status) {
-        tasks = tasks.filter((t) => t.status === filters.status);
+        issues = issues.filter((t) => t.status === filters.status);
       }
       if (filters?.severity) {
-        tasks = tasks.filter((t) => t.severity === filters.severity);
+        issues = issues.filter((t) => t.severity === filters.severity);
       }
-      return tasks.map((t) => ({
-        taskId: t.taskId,
+      return issues.map((t) => ({
+        taskId: t.issueId,
+        issueId: t.issueId,
         title: t.title,
         description: t.description,
         status: t.status,
         severity: t.severity,
         complexity: t.complexity,
-        touches: t.touches,
-        agentRole: t.agentRole,
+        touches: t.labels,
+        labels: t.labels,
+        agentRole: t.assignee,
+        assignee: t.assignee,
+        sourceType: t.sourceType,
+        sourceExternalId: t.sourceExternalId,
+        sourceExternalUrl: t.sourceExternalUrl,
+        sourceSyncedAt: t.sourceSyncedAt,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
         completedAt: t.completedAt,

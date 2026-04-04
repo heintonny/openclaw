@@ -294,12 +294,12 @@ const entries: SubCliEntry[] = [
     },
   },
   {
-    name: "backlog",
-    description: "Manage project task backlogs",
+    name: "issues",
+    description: "Manage project issues",
     hasSubcommands: true,
     register: async (program) => {
       const mod = await import("../backlog-cli.js");
-      mod.registerBacklogCli(program);
+      mod.registerIssuesCli(program);
     },
   },
   {

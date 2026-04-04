@@ -124,8 +124,8 @@ export const SUB_CLI_DESCRIPTORS = [
     hasSubcommands: true,
   },
   {
-    name: "backlog",
-    description: "Manage project task backlogs",
+    name: "issues",
+    description: "Manage project issues",
     hasSubcommands: true,
   },
   {

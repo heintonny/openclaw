@@ -1,31 +1,43 @@
 import { html, nothing } from "lit";
 
-export type BacklogTask = {
+export type IssueItem = {
   taskId: string;
+  issueId?: string;
   title: string;
   description: string;
   status: string;
   severity: string;
   complexity: string;
-  touches: string[];
-  agentRole: string | null;
+  touches?: string[];
+  labels?: string[];
+  agentRole?: string | null;
+  assignee?: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  projectId: string;
 };
 
-export type BacklogProps = {
+export type IssuesProps = {
   loading: boolean;
-  tasks: BacklogTask[];
+  tasks: IssueItem[];
   error: string | null;
-  selectedProjectId: string | null;
   statusFilter: string | null;
   severityFilter: string | null;
+  projectFilter: string | null;
   addFormVisible: boolean;
+  moreProjectsOpen: boolean;
+  moreProjectsSearch: string;
+  batchPlanDismissed: boolean;
   batchPlan: Array<{ taskId: string; title: string; severity: string }>;
+  projects?: Array<{ projectId: string; repoPaths: string[] }>;
   onRefresh: () => void;
   onStatusFilterChange: (status: string | null) => void;
   onSeverityFilterChange: (severity: string | null) => void;
+  onProjectFilterChange: (projectId: string | null) => void;
+  onMoreProjectsOpenChange: (open: boolean) => void;
+  onMoreProjectsSearchChange: (search: string) => void;
+  onBatchPlanDismiss: () => void;
   onAddTask: (task: {
     title: string;
     description?: string;
@@ -33,13 +45,13 @@ export type BacklogProps = {
     complexity?: string;
   }) => void;
   onToggleAddForm: () => void;
-  onUpdateStatus: (taskId: string, status: string) => void;
+  onUpdateStatus: (taskId: string, status: string, projectId: string) => void;
   onPlanBatch: () => void;
-  onNavigateToProjects: () => void;
-  onAutoSelectProject: (projectId: string) => void;
-  onProjectChange: (projectId: string) => void;
-  projects?: Array<{ projectId: string; repoPaths: string[] }>;
 };
+
+// Backward-compatible aliases
+export type BacklogTask = IssueItem;
+export type BacklogProps = IssuesProps;
 
 const STATUS_OPTIONS = [
   { value: "notStarted", label: "Not Started" },
@@ -98,54 +110,8 @@ let _addTitle = "";
 let _addDescription = "";
 let _addSeverity = "medium";
 let _addComplexity = "m";
-let _batchPlanDismissed = false;
 
-export function renderBacklog(props: BacklogProps) {
-  // Auto-select if only one project and none selected
-  if (!props.selectedProjectId && props.projects && props.projects.length === 1) {
-    props.onAutoSelectProject(props.projects[0].projectId);
-    return html`<section class="card"><p>Loading...</p></section>`;
-  }
-
-  // If no project selected and multiple projects exist, show selector prompt
-  if (!props.selectedProjectId) {
-    if (props.projects && props.projects.length > 1) {
-      return html`
-        <section class="card">
-          <div class="card-title" style="margin-bottom: 12px;">Backlog</div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="color: var(--text-muted, #888);">Select a project:</span>
-            <select
-              class="input"
-              style="font-size: 0.9em; padding: 6px 10px; min-width: 180px;"
-              @change=${(e: Event) => {
-                const val = (e.target as HTMLSelectElement).value;
-                if (val) { props.onProjectChange(val); }
-              }}
-            >
-              <option value="" selected disabled>— Choose project —</option>
-              ${props.projects.map(
-                (p) => html`<option value=${p.projectId}>${p.projectId}</option>`,
-              )}
-            </select>
-          </div>
-        </section>
-      `;
-    }
-    return html`
-      <section class="card">
-        <div class="page-empty">
-          <p>No project selected.</p>
-          <p>
-            <button class="btn btn--sm btn--primary" @click=${props.onNavigateToProjects}>
-              ← Go to Projects
-            </button>
-          </p>
-        </div>
-      </section>
-    `;
-  }
-
+export function renderIssues(props: IssuesProps) {
   const handleAddSubmit = (e: Event) => {
     e.preventDefault();
     if (_addTitle.trim()) {
@@ -162,8 +128,13 @@ export function renderBacklog(props: BacklogProps) {
     }
   };
 
-  // Filter tasks
+  // Apply project filter first
   let filteredTasks = props.tasks;
+  if (props.projectFilter) {
+    filteredTasks = filteredTasks.filter((t) => t.projectId === props.projectFilter);
+  }
+
+  // Then status/severity filters
   if (props.statusFilter) {
     filteredTasks = filteredTasks.filter((t) => t.status === props.statusFilter);
   }
@@ -171,20 +142,44 @@ export function renderBacklog(props: BacklogProps) {
     filteredTasks = filteredTasks.filter((t) => t.severity === props.severityFilter);
   }
 
-  // Sort tasks
+  // Sort: by status order, then by project within same status
   const sortedTasks = [...filteredTasks].toSorted((a, b) => {
     const aOrder = STATUS_ORDER[a.status] ?? 99;
     const bOrder = STATUS_ORDER[b.status] ?? 99;
-    return aOrder - bOrder;
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder;
+    }
+    return a.projectId.localeCompare(b.projectId);
   });
 
-  // Status counts
+  // Status counts (from all tasks, before filters)
   const statusCounts: Record<string, number> = {};
   for (const task of props.tasks) {
     statusCounts[task.status] = (statusCounts[task.status] ?? 0) + 1;
   }
 
-  const showBatchPlan = props.batchPlan.length > 0 && !_batchPlanDismissed;
+  // Project counts for filter chips — top 5 by task count
+  const projectCounts: Record<string, number> = {};
+  for (const task of props.tasks) {
+    projectCounts[task.projectId] = (projectCounts[task.projectId] ?? 0) + 1;
+  }
+  const topProjects = Object.entries(projectCounts)
+    .toSorted((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id]) => id);
+
+  // All unique project IDs for the "+ More" search
+  const allProjectIds = Object.keys(projectCounts).toSorted();
+
+  // Filter the "+ More" search results
+  const searchLower = props.moreProjectsSearch.toLowerCase();
+  const moreProjectResults = searchLower
+    ? allProjectIds.filter(
+        (id) => id.toLowerCase().includes(searchLower) && !topProjects.includes(id),
+      )
+    : allProjectIds.filter((id) => !topProjects.includes(id));
+
+  const showBatchPlan = props.batchPlan.length > 0 && !props.batchPlanDismissed;
 
   return html`
     <section class="card">
@@ -195,36 +190,13 @@ export function renderBacklog(props: BacklogProps) {
       >
         <div>
           <div class="row" style="gap: 8px; align-items: center;">
-            <div class="card-title" style="margin: 0;">Backlog</div>
-            ${props.projects && props.projects.length > 1
-              ? html`
-                  <select
-                    class="input"
-                    style="font-size: 0.85em; padding: 4px 8px; min-width: 140px;"
-                    .value=${props.selectedProjectId ?? ""}
-                    @change=${(e: Event) => {
-                      const val = (e.target as HTMLSelectElement).value;
-                      if (val) {
-                        props.onProjectChange(val);
-                      }
-                    }}
-                  >
-                    ${props.projects.map((p) => {
-                      const pid = p.projectId;
-                      return html`<option value=${pid} ?selected=${pid === props.selectedProjectId}>
-                        ${pid}
-                      </option>`;
-                    })}
-                  </select>
-                `
-              : html`
-                  <span
-                    class="pill"
-                    style="font-size: 0.8em; font-weight: normal; color: var(--text-muted, #888);"
-                  >
-                    ${props.selectedProjectId}
-                  </span>
-                `}
+            <div class="card-title" style="margin: 0;">Issues</div>
+            <span
+              class="pill"
+              style="font-size: 0.8em; font-weight: normal; color: var(--text-muted, #888);"
+            >
+              ${props.tasks.length} issues
+            </span>
           </div>
         </div>
         <div class="row" style="gap: 8px; flex-wrap: wrap;">
@@ -233,11 +205,22 @@ export function renderBacklog(props: BacklogProps) {
           </button>
           <button
             class="btn btn--sm ${props.addFormVisible ? "btn--primary" : ""}"
+            ?disabled=${!props.projectFilter && !props.addFormVisible}
             @click=${props.onToggleAddForm}
+            title=${props.projectFilter ? "" : "Select a project filter first to add an issue"}
           >
-            ${props.addFormVisible ? "Cancel" : "+ Add Task"}
+            ${props.addFormVisible ? "Cancel" : "+ Add Issue"}
           </button>
-          <button class="btn btn--sm" @click=${props.onPlanBatch}>Plan Batch</button>
+          <button
+            class="btn btn--sm"
+            ?disabled=${!props.projectFilter}
+            @click=${props.onPlanBatch}
+            title=${props.projectFilter
+              ? "Plan batch for " + props.projectFilter
+              : "Select a project filter to plan batch"}
+          >
+            Plan Batch
+          </button>
         </div>
       </div>
 
@@ -246,7 +229,7 @@ export function renderBacklog(props: BacklogProps) {
         ? html`<div class="callout danger" style="margin-bottom: 12px;">${props.error}</div>`
         : nothing}
 
-      <!-- Add Task Form -->
+      <!-- Add Issue Form -->
       ${props.addFormVisible
         ? html`
             <form
@@ -254,14 +237,24 @@ export function renderBacklog(props: BacklogProps) {
               style="margin-bottom: 16px; background: var(--surface-2, #1e1e1e); padding: 12px;"
               @submit=${handleAddSubmit}
             >
-              <div class="card-title" style="margin-bottom: 8px;">New Task</div>
+              <div class="card-title" style="margin-bottom: 8px;">New Issue</div>
+              ${!props.projectFilter
+                ? html`<div class="callout warning" style="margin-bottom: 8px; font-size: 0.85em;">
+                    Select a project filter first to add issues to a specific project.
+                  </div>`
+                : html`<div
+                    style="margin-bottom: 8px; font-size: 0.85em; color: var(--text-muted, #888);"
+                  >
+                    Adding to project:
+                    <span class="pill" style="font-size: 0.85em;">${props.projectFilter}</span>
+                  </div>`}
               <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
                 <label class="field-inline">
                   <span>Title</span>
                   <input
                     type="text"
                     class="input"
-                    placeholder="Task title"
+                    placeholder="Issue title"
                     .value=${_addTitle}
                     @input=${(e: Event) => {
                       _addTitle = (e.target as HTMLInputElement).value;
@@ -319,7 +312,13 @@ export function renderBacklog(props: BacklogProps) {
                 </div>
               </div>
               <div class="row" style="gap: 8px;">
-                <button type="submit" class="btn btn--sm btn--primary">Add Task</button>
+                <button
+                  type="submit"
+                  class="btn btn--sm btn--primary"
+                  ?disabled=${!props.projectFilter}
+                >
+                  Add Issue
+                </button>
                 <button type="button" class="btn btn--sm" @click=${props.onToggleAddForm}>
                   Cancel
                 </button>
@@ -339,13 +338,8 @@ export function renderBacklog(props: BacklogProps) {
                 class="row"
                 style="justify-content: space-between; align-items: center; margin-bottom: 8px;"
               >
-                <strong>Recommended Next Tasks</strong>
-                <button
-                  class="btn btn--sm"
-                  @click=${() => {
-                    _batchPlanDismissed = true;
-                  }}
-                >
+                <strong>Recommended Next Issues</strong>
+                <button class="btn btn--sm" @click=${() => props.onBatchPlanDismiss()}>
                   Dismiss
                 </button>
               </div>
@@ -396,6 +390,7 @@ export function renderBacklog(props: BacklogProps) {
 
       <!-- Filters -->
       <div style="margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Status filter -->
         <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
           <span style="font-size: 0.8em; color: var(--text-muted, #888); min-width: 60px;"
             >Status:</span
@@ -417,6 +412,7 @@ export function renderBacklog(props: BacklogProps) {
             `,
           )}
         </div>
+        <!-- Severity filter -->
         <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
           <span style="font-size: 0.8em; color: var(--text-muted, #888); min-width: 60px;"
             >Severity:</span
@@ -438,24 +434,122 @@ export function renderBacklog(props: BacklogProps) {
             `,
           )}
         </div>
+        <!-- Project filter -->
+        <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
+          <span style="font-size: 0.8em; color: var(--text-muted, #888); min-width: 60px;"
+            >Project:</span
+          >
+          <button
+            class="btn btn--sm ${!props.projectFilter ? "btn--primary" : ""}"
+            @click=${() => {
+              props.onProjectFilterChange(null);
+              props.onMoreProjectsOpenChange(false);
+            }}
+          >
+            All
+          </button>
+          ${topProjects.map(
+            (pid) => html`
+              <button
+                class="btn btn--sm ${props.projectFilter === pid ? "btn--primary" : ""}"
+                @click=${() => {
+                  props.onProjectFilterChange(pid);
+                  props.onMoreProjectsOpenChange(false);
+                }}
+              >
+                ${pid}
+                <span style="font-size: 0.8em; opacity: 0.7; margin-left: 2px;"
+                  >(${projectCounts[pid]})</span
+                >
+              </button>
+            `,
+          )}
+          ${allProjectIds.length > 5
+            ? html`
+                <div style="position: relative; display: inline-block;">
+                  <button
+                    class="btn btn--sm ${props.moreProjectsOpen ? "btn--primary" : ""}"
+                    @click=${() => {
+                      props.onMoreProjectsOpenChange(!props.moreProjectsOpen);
+                      props.onMoreProjectsSearchChange("");
+                    }}
+                  >
+                    + More
+                  </button>
+                  ${props.moreProjectsOpen
+                    ? html`
+                        <div
+                          style="position: absolute; top: 100%; left: 0; z-index: 10; margin-top: 4px; background: var(--surface-2, #1e1e1e); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 6px; padding: 8px; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"
+                        >
+                          <input
+                            class="input"
+                            type="text"
+                            placeholder="Search projects…"
+                            style="font-size: 0.85em; padding: 4px 8px; width: 100%; margin-bottom: 6px;"
+                            .value=${props.moreProjectsSearch}
+                            @input=${(e: Event) => {
+                              props.onMoreProjectsSearchChange(
+                                (e.target as HTMLInputElement).value,
+                              );
+                            }}
+                          />
+                          <div style="max-height: 200px; overflow-y: auto;">
+                            ${moreProjectResults.length === 0
+                              ? html`<div
+                                  style="font-size: 0.8em; color: var(--text-muted, #888); padding: 4px;"
+                                >
+                                  No matching projects
+                                </div>`
+                              : moreProjectResults.map(
+                                  (pid) => html`
+                                    <div
+                                      style="padding: 4px 8px; cursor: pointer; border-radius: 4px; font-size: 0.85em;"
+                                      @mouseover=${(e: Event) => {
+                                        (e.currentTarget as HTMLElement).style.background =
+                                          "var(--surface-3, #2a2a2a)";
+                                      }}
+                                      @mouseout=${(e: Event) => {
+                                        (e.currentTarget as HTMLElement).style.background = "";
+                                      }}
+                                      @click=${() => {
+                                        props.onProjectFilterChange(pid);
+                                        props.onMoreProjectsOpenChange(false);
+                                        props.onMoreProjectsSearchChange("");
+                                      }}
+                                    >
+                                      ${pid}
+                                      <span style="font-size: 0.8em; opacity: 0.7;"
+                                        >(${projectCounts[pid] ?? 0})</span
+                                      >
+                                    </div>
+                                  `,
+                                )}
+                          </div>
+                        </div>
+                      `
+                    : nothing}
+                </div>
+              `
+            : nothing}
+        </div>
       </div>
 
       <!-- Loading state -->
       ${props.loading && props.tasks.length === 0
-        ? html`<div class="page-empty"><p>Loading tasks…</p></div>`
+        ? html`<div class="page-empty"><p>Loading issues…</p></div>`
         : sortedTasks.length === 0
           ? html`
               <div class="page-empty">
-                <p>No tasks found.</p>
+                <p>No issues found.</p>
                 ${props.tasks.length > 0
                   ? html`<p style="font-size: 0.85em; color: var(--text-muted, #888);">
                       Try clearing filters.
                     </p>`
-                  : html`<p>Click "Add Task" to create your first task.</p>`}
+                  : html`<p>Click "Add Issue" to create your first issue.</p>`}
               </div>
             `
           : html`
-              <!-- Task Table -->
+              <!-- Issue Table -->
               <div style="overflow-x: auto;">
                 <table
                   class="table"
@@ -467,6 +561,11 @@ export function renderBacklog(props: BacklogProps) {
                         style="text-align: left; padding: 8px 12px; white-space: nowrap; color: var(--text-muted, #888); font-weight: 500;"
                       >
                         ID
+                      </th>
+                      <th
+                        style="text-align: left; padding: 8px 12px; white-space: nowrap; color: var(--text-muted, #888); font-weight: 500;"
+                      >
+                        Project
                       </th>
                       <th
                         style="text-align: left; padding: 8px 12px; color: var(--text-muted, #888); font-weight: 500;"
@@ -499,6 +598,16 @@ export function renderBacklog(props: BacklogProps) {
                           >
                             #${task.taskId.slice(0, 8)}
                           </td>
+                          <td style="padding: 8px 12px; white-space: nowrap;">
+                            <span
+                              class="pill"
+                              style="font-size: 0.75em; cursor: pointer;"
+                              @click=${() => props.onProjectFilterChange(task.projectId)}
+                              title="Filter by ${task.projectId}"
+                            >
+                              ${task.projectId}
+                            </span>
+                          </td>
                           <td style="padding: 8px 12px; max-width: 300px;">
                             <div style="font-weight: 500;">${task.title}</div>
                             ${task.description
@@ -518,6 +627,7 @@ export function renderBacklog(props: BacklogProps) {
                                 props.onUpdateStatus(
                                   task.taskId,
                                   (e.target as HTMLSelectElement).value,
+                                  task.projectId,
                                 );
                               }}
                             >
@@ -553,3 +663,6 @@ export function renderBacklog(props: BacklogProps) {
     </section>
   `;
 }
+
+// Backward-compatible alias
+export const renderBacklog = renderIssues;

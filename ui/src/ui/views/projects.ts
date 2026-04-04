@@ -32,7 +32,7 @@ export type ProjectsProps = {
   onRefresh: () => void;
   onRegister: (projectId: string, repoPath: string) => void;
   onSelectProject: (projectId: string) => void;
-  onNavigateToBacklog: (projectId: string) => void;
+  onNavigateToIssues: (projectId: string) => void;
 };
 
 // ── Module-level state ────────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ function renderProjectCard(
   isExpanded: boolean,
   onSelect: () => void,
   onToggleExpand: () => void,
-  onNavigateToBacklog: () => void,
+  onNavigateToIssues: () => void,
 ) {
   const ds = project.detailedStats;
   const health = healthIndicator(ds);
@@ -293,14 +293,14 @@ function renderProjectCard(
       </div>
 
       <!-- Expanded detail panel -->
-      ${isExpanded && ds ? renderExpandedDetail(ds, onNavigateToBacklog) : nothing}
+      ${isExpanded && ds ? renderExpandedDetail(ds, onNavigateToIssues) : nothing}
     </div>
   `;
 }
 
 // ── Expanded detail panel ─────────────────────────────────────────────────────
 
-function renderExpandedDetail(ds: DetailedStats, onNavigateToBacklog: () => void) {
+function renderExpandedDetail(ds: DetailedStats, onNavigateToIssues: () => void) {
   const statusEntries = Object.entries(ds.statusBreakdown).filter(([, v]) => v > 0);
   const severityEntries = Object.entries(ds.severityBreakdown).filter(([, v]) => v > 0);
   const complexityEntries = Object.entries(ds.complexityBreakdown).filter(([, v]) => v > 0);
@@ -445,9 +445,7 @@ function renderExpandedDetail(ds: DetailedStats, onNavigateToBacklog: () => void
 
       <!-- Action buttons -->
       <div class="row" style="gap: 8px; margin-top: 4px;">
-        <button class="btn btn--sm btn--primary" @click=${onNavigateToBacklog}>
-          Open Backlog →
-        </button>
+        <button class="btn btn--sm btn--primary" @click=${onNavigateToIssues}>Open Issues →</button>
       </div>
     </div>
   `;
@@ -575,7 +573,7 @@ export function renderProjects(props: ProjectsProps) {
                     () => {
                       _expandedProjectId = isExpanded ? null : pid;
                     },
-                    () => props.onNavigateToBacklog(pid),
+                    () => props.onNavigateToIssues(pid),
                   );
                 })}
               </div>
