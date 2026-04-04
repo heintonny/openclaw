@@ -35,7 +35,7 @@ describe("backlog/db", () => {
     dbInstance = openProjectDatabase(sqlitePath);
 
     expect(dbInstance.isWalMode()).toBe(true);
-    expect(dbInstance.hasTable("backlog")).toBe(true);
+    expect(dbInstance.hasTable("issues")).toBe(true);
     expect(dbInstance.hasTable("dependencies")).toBe(true);
     expect(dbInstance.hasTable("execution_runs")).toBe(true);
     expect(dbInstance.hasTable("selfimprove")).toBe(true);
@@ -46,40 +46,140 @@ describe("backlog/db", () => {
     initProjectDirectory(tempDir);
     dbInstance = openProjectDatabase(sqlitePath);
 
+    const now = Date.now();
     const task: BacklogTask = {
       issueId: "TASK-001",
       title: "First task",
       description: "Do something",
-      status: "notStarted",
+      status: "open",
       severity: "medium",
       complexity: "m",
       labels: ["src/index.ts"],
       assignee: "dev",
+      projectId: null,
+      batchId: null,
+      requiresApproval: 0,
+      touchesJson: null,
       sourceType: "internal",
       sourceExternalId: null,
       sourceExternalUrl: null,
       sourceSyncedAt: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       completedAt: null,
+      startedAt: null,
+      closedAt: null,
+      approvedAt: null,
     };
 
     dbInstance.addBacklogTask(task);
 
     const fetched = dbInstance.getIssue("TASK-001");
-    expect(fetched).toMatchObject(task);
+    expect(fetched).toMatchObject({
+      issueId: "TASK-001",
+      title: "First task",
+      status: "open",
+    });
 
     const list = dbInstance.listBacklogTasks();
     expect(list).toHaveLength(1);
     expect(list[0].issueId).toBe("TASK-001");
 
-    task.status = "inProgress";
+    task.status = "in_progress";
     task.title = "Updated task";
     dbInstance.updateBacklogTask(task);
 
     const updated = dbInstance.getBacklogTask("TASK-001");
-    expect(updated?.status).toBe("inProgress");
+    expect(updated?.status).toBe("in_progress");
     expect(updated?.title).toBe("Updated task");
+  });
+
+  it("stores and retrieves project_id and requires_approval", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    const now = Date.now();
+    const task: BacklogTask = {
+      issueId: "TASK-002",
+      title: "Project task",
+      description: "Task with project",
+      status: "open",
+      severity: "high",
+      complexity: "l",
+      labels: [],
+      assignee: null,
+      projectId: "my-project",
+      batchId: "batch-001",
+      requiresApproval: 1,
+      touchesJson: '["src/db.ts","src/types.ts"]',
+      sourceType: "internal",
+      sourceExternalId: null,
+      sourceExternalUrl: null,
+      sourceSyncedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+      startedAt: null,
+      closedAt: null,
+      approvedAt: null,
+    };
+
+    dbInstance.addIssue(task);
+    const fetched = dbInstance.getIssue("TASK-002");
+    expect(fetched?.projectId).toBe("my-project");
+    expect(fetched?.batchId).toBe("batch-001");
+    expect(fetched?.requiresApproval).toBe(1);
+    expect(fetched?.touchesJson).toBe('["src/db.ts","src/types.ts"]');
+  });
+
+  it("supports new status values: approved, in_progress, rejected", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    dbInstance.addTask({ issueId: "TASK-003", title: "Approval test" });
+    dbInstance.updateTask("TASK-003", { status: "approved" });
+    const approved = dbInstance.getIssue("TASK-003");
+    expect(approved?.status).toBe("approved");
+    expect(approved?.approvedAt).toBeTypeOf("number");
+
+    dbInstance.updateTask("TASK-003", { status: "in_progress" });
+    const inProgress = dbInstance.getIssue("TASK-003");
+    expect(inProgress?.status).toBe("in_progress");
+    expect(inProgress?.startedAt).toBeTypeOf("number");
+  });
+
+  it("listIssuesByProject filters correctly", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    dbInstance.addTask({ issueId: "A-001", title: "Project A task 1", projectId: "proj-a" });
+    dbInstance.addTask({ issueId: "A-002", title: "Project A task 2", projectId: "proj-a" });
+    dbInstance.addTask({ issueId: "B-001", title: "Project B task", projectId: "proj-b" });
+
+    const projA = dbInstance.listIssuesByProject("proj-a");
+    expect(projA).toHaveLength(2);
+    expect(projA.every((t) => t.projectId === "proj-a")).toBe(true);
+
+    const projB = dbInstance.listIssuesByProject("proj-b");
+    expect(projB).toHaveLength(1);
+  });
+
+  it("timestamps are stored as Unix ms integers", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    const before = Date.now();
+    dbInstance.addTask({ issueId: "TS-001", title: "Timestamp test" });
+    const after = Date.now();
+
+    const issue = dbInstance.getIssue("TS-001");
+    expect(issue?.createdAt).toBeTypeOf("number");
+    expect(issue?.createdAt).toBeGreaterThanOrEqual(before);
+    expect(issue?.createdAt).toBeLessThanOrEqual(after);
   });
 
   it("manages dependencies", () => {
@@ -106,6 +206,7 @@ describe("backlog/db", () => {
     initProjectDirectory(tempDir);
     dbInstance = openProjectDatabase(sqlitePath);
 
+    const now = Date.now();
     dbInstance.addSelfImprove({
       taskId: "TASK-001",
       agentRole: "reviewer",
@@ -116,12 +217,13 @@ describe("backlog/db", () => {
       tags: "naming,style",
       scope: "project",
       applied: false,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     });
 
     const list = dbInstance.listSelfImprove();
     expect(list).toHaveLength(1);
     expect(list[0].title).toBe("Use proper naming");
     expect(list[0].applied).toBe(false);
+    expect(list[0].createdAt).toBeTypeOf("number");
   });
 });

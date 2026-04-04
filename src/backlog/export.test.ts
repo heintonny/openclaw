@@ -5,6 +5,37 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exportBacklog, exportSelfImprove } from "./export.js";
 import type { Issue as BacklogTask, SelfImproveEntry } from "./types.js";
 
+const TS_2024 = new Date("2024-01-01T00:00:00.000Z").getTime();
+const TS_2024_02 = new Date("2024-01-02T00:00:00.000Z").getTime();
+
+function makeIssue(
+  overrides: Partial<BacklogTask> & { issueId: string; title: string },
+): BacklogTask {
+  return {
+    description: "",
+    status: "open",
+    severity: "medium",
+    complexity: "m",
+    labels: [],
+    assignee: null,
+    projectId: null,
+    batchId: null,
+    requiresApproval: 0,
+    touchesJson: null,
+    sourceType: "internal",
+    sourceExternalId: null,
+    sourceExternalUrl: null,
+    sourceSyncedAt: null,
+    createdAt: TS_2024,
+    updatedAt: TS_2024,
+    completedAt: null,
+    startedAt: null,
+    closedAt: null,
+    approvedAt: null,
+    ...overrides,
+  };
+}
+
 describe("backlog/export", () => {
   let tempDir: string;
 
@@ -21,40 +52,22 @@ describe("backlog/export", () => {
   describe("exportBacklog", () => {
     it("creates issues.md in .openclaw/export/", () => {
       const tasks: BacklogTask[] = [
-        {
+        makeIssue({
           issueId: "TASK-001",
           title: "Fix login bug",
           description: "Users cannot log in with SSO",
-          status: "inProgress",
+          status: "in_progress",
           severity: "critical",
           complexity: "m",
           labels: ["src/auth.ts", "src/login.ts"],
           assignee: "dev",
-          sourceType: "internal",
-          sourceExternalId: null,
-          sourceExternalUrl: null,
-          sourceSyncedAt: null,
-          createdAt: "2024-01-01T00:00:00.000Z",
-          updatedAt: "2024-01-02T00:00:00.000Z",
-          completedAt: null,
-        },
-        {
+          updatedAt: TS_2024_02,
+        }),
+        makeIssue({
           issueId: "TASK-002",
           title: "Write tests",
-          description: "",
-          status: "notStarted",
-          severity: "medium",
-          complexity: "s",
-          labels: [],
-          assignee: null,
-          sourceType: "internal",
-          sourceExternalId: null,
-          sourceExternalUrl: null,
-          sourceSyncedAt: null,
-          createdAt: "2024-01-01T00:00:00.000Z",
-          updatedAt: "2024-01-01T00:00:00.000Z",
-          completedAt: null,
-        },
+          status: "open",
+        }),
       ];
 
       const deps = [{ taskId: "TASK-002", dependsOn: "TASK-001" }];
@@ -68,61 +81,45 @@ describe("backlog/export", () => {
       expect(content).toContain("# Issues");
       expect(content).toContain("do not edit manually");
       expect(content).toContain("## Summary");
-      expect(content).toContain("| inProgress | 1 |");
-      expect(content).toContain("| notStarted | 1 |");
+      expect(content).toContain("| in_progress | 1 |");
+      expect(content).toContain("| open | 1 |");
       expect(content).toContain("| **Total** | **2** |");
     });
 
     it("groups tasks by status in correct order", () => {
       const tasks: BacklogTask[] = [
-        {
+        makeIssue({
           issueId: "TASK-003",
           title: "Done task",
           description: "A completed task",
           status: "done",
           severity: "low",
           complexity: "xs",
-          labels: [],
-          assignee: null,
-          sourceType: "internal",
-          sourceExternalId: null,
-          sourceExternalUrl: null,
-          sourceSyncedAt: null,
-          createdAt: "2024-01-01T00:00:00.000Z",
-          updatedAt: "2024-01-01T00:00:00.000Z",
-          completedAt: "2024-01-02T00:00:00.000Z",
-        },
-        {
+          completedAt: TS_2024_02,
+        }),
+        makeIssue({
           issueId: "TASK-004",
           title: "In progress task",
-          description: "",
-          status: "inProgress",
+          status: "in_progress",
           severity: "high",
           complexity: "l",
           labels: ["src/main.ts"],
           assignee: "dev",
-          sourceType: "internal",
-          sourceExternalId: null,
-          sourceExternalUrl: null,
-          sourceSyncedAt: null,
-          createdAt: "2024-01-01T00:00:00.000Z",
-          updatedAt: "2024-01-01T00:00:00.000Z",
-          completedAt: null,
-        },
+        }),
       ];
 
       const backlogPath = exportBacklog(tempDir, tasks, []);
       const content = readFileSync(backlogPath, "utf-8");
 
-      // inProgress should appear before done
-      const inProgressIdx = content.indexOf("## inProgress");
+      // in_progress should appear before done
+      const inProgressIdx = content.indexOf("## in_progress");
       const doneIdx = content.indexOf("## done");
       expect(inProgressIdx).toBeLessThan(doneIdx);
     });
 
     it("includes task details: severity, complexity, agent, deps, touches", () => {
       const tasks: BacklogTask[] = [
-        {
+        makeIssue({
           issueId: "TASK-010",
           title: "Complex feature",
           description: "A detailed description",
@@ -131,14 +128,7 @@ describe("backlog/export", () => {
           complexity: "xl",
           labels: ["src/feature.ts", "src/utils.ts"],
           assignee: "qa",
-          sourceType: "internal",
-          sourceExternalId: null,
-          sourceExternalUrl: null,
-          sourceSyncedAt: null,
-          createdAt: "2024-01-01T00:00:00.000Z",
-          updatedAt: "2024-01-01T00:00:00.000Z",
-          completedAt: null,
-        },
+        }),
       ];
 
       const deps = [{ taskId: "TASK-010", dependsOn: "TASK-005" }];
@@ -186,7 +176,7 @@ describe("backlog/export", () => {
           tags: "performance,async",
           scope: "project",
           applied: false,
-          createdAt: "2024-01-01T00:00:00.000Z",
+          createdAt: TS_2024,
         },
         {
           id: 2,
@@ -199,7 +189,7 @@ describe("backlog/export", () => {
           tags: null,
           scope: "global",
           applied: true,
-          createdAt: "2024-01-02T00:00:00.000Z",
+          createdAt: TS_2024_02,
         },
       ];
 
@@ -230,7 +220,7 @@ describe("backlog/export", () => {
         tags: null,
         scope: "project",
         applied: false,
-        createdAt: "2024-01-01T00:00:00.000Z",
+        createdAt: TS_2024,
       });
 
       const entries = [
@@ -262,7 +252,7 @@ describe("backlog/export", () => {
           tags: null,
           scope: "project",
           applied: false,
-          createdAt: "2024-01-01T00:00:00.000Z",
+          createdAt: TS_2024,
         },
         {
           id: 2,
@@ -275,7 +265,7 @@ describe("backlog/export", () => {
           tags: null,
           scope: "global",
           applied: false,
-          createdAt: "2024-01-01T00:00:00.000Z",
+          createdAt: TS_2024,
         },
       ];
 
@@ -301,7 +291,7 @@ describe("backlog/export", () => {
           tags: "performance,testing",
           scope: "project",
           applied: false,
-          createdAt: "2024-01-01T00:00:00.000Z",
+          createdAt: TS_2024,
         },
       ];
 

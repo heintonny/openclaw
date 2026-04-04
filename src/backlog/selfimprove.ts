@@ -14,7 +14,7 @@ export function addLesson(params: {
   const dbPath = resolveProjectSqlitePath(repoPath);
   const db = openProjectDatabase(dbPath);
   try {
-    const now = new Date().toISOString();
+    const now = Date.now();
     db.addSelfImprove({
       taskId: params.taskId ?? null,
       agentRole: params.role || "general",
@@ -33,17 +33,13 @@ export function addLesson(params: {
   }
 }
 
-export function listLessons(params: {
-  path?: string;
-  scope?: string;
-  severity?: string;
-}): Array<{
+export function listLessons(params: { path?: string; scope?: string; severity?: string }): Array<{
   category: string;
   severity: string;
   title: string;
   description: string;
   role: string;
-  createdAt: string;
+  createdAt: number;
 }> {
   const repoPath = params.path || process.cwd();
   const dbPath = resolveProjectSqlitePath(repoPath);

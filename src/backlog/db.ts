@@ -21,6 +21,35 @@ export function initProjectDirectory(repoPath: string): string {
   return path.join(dotDir, "project.sqlite");
 }
 
+/** Convert a timestamp value (ISO string or Unix ms number) to Unix ms integer */
+function toUnixMs(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  // ISO string
+  const ms = new Date(value).getTime();
+  return isNaN(ms) ? null : ms;
+}
+
+/** Convert a DB row timestamp (INTEGER Unix ms) to number */
+function rowTs(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    // Legacy TEXT ISO string
+    const ms = new Date(value).getTime();
+    return isNaN(ms) ? null : ms;
+  }
+  return null;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapRowToIssue(row: any): Issue {
   return {
@@ -30,15 +59,22 @@ function mapRowToIssue(row: any): Issue {
     status: row.status,
     severity: row.severity,
     complexity: row.complexity,
-    labels: JSON.parse(row.labels),
-    assignee: row.assignee,
+    labels: JSON.parse(row.labels || "[]"),
+    assignee: row.assignee ?? null,
+    projectId: row.project_id ?? null,
+    batchId: row.batch_id ?? null,
+    requiresApproval: row.requires_approval ?? 0,
+    touchesJson: row.touches_json ?? null,
     sourceType: row.source_type ?? "internal",
     sourceExternalId: row.source_external_id ?? null,
     sourceExternalUrl: row.source_external_url ?? null,
     sourceSyncedAt: row.source_synced_at ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    completedAt: row.completed_at,
+    createdAt: rowTs(row.created_at) ?? Date.now(),
+    updatedAt: rowTs(row.updated_at) ?? Date.now(),
+    completedAt: rowTs(row.completed_at),
+    startedAt: rowTs(row.started_at),
+    closedAt: rowTs(row.closed_at),
+    approvedAt: rowTs(row.approved_at),
   };
 }
 
@@ -47,6 +83,7 @@ export function openProjectDatabase(sqlitePath: string) {
   const db = new DatabaseSync(sqlitePath);
 
   db.exec("PRAGMA journal_mode=WAL");
+  db.exec("PRAGMA busy_timeout=5000");
 
   // Migration: rename backlog → issues if old table exists
   const hasBacklog = db
@@ -57,30 +94,43 @@ export function openProjectDatabase(sqlitePath: string) {
     .get();
 
   if (hasBacklog && !hasIssues) {
-    // Migrate from old backlog table to new issues table
+    // Migrate from old backlog table to new issues table (schema v2 with Unix ms timestamps)
     db.exec(`
       CREATE TABLE issues (
         issue_id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL DEFAULT 'notStarted',
+        status TEXT NOT NULL DEFAULT 'open',
         severity TEXT NOT NULL DEFAULT 'medium',
         complexity TEXT NOT NULL DEFAULT 'm',
         labels TEXT NOT NULL DEFAULT '[]',
         assignee TEXT,
+        project_id TEXT,
+        batch_id TEXT,
+        requires_approval INTEGER NOT NULL DEFAULT 0,
+        touches_json TEXT,
         source_type TEXT NOT NULL DEFAULT 'internal',
         source_external_id TEXT,
         source_external_url TEXT,
         source_synced_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        completed_at TEXT
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+        completed_at INTEGER,
+        started_at INTEGER,
+        closed_at INTEGER,
+        approved_at INTEGER
       );
     `);
     db.exec(`
-      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee, source_type, created_at, updated_at, completed_at)
+      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee,
+                          source_type, created_at, updated_at, completed_at)
       SELECT task_id, title, description, status, severity, complexity, touches, agent_role,
-             'internal', created_at, updated_at, completed_at
+             'internal',
+             CAST((julianday(created_at) - 2440587.5) * 86400000 AS INTEGER),
+             CAST((julianday(updated_at) - 2440587.5) * 86400000 AS INTEGER),
+             CASE WHEN completed_at IS NOT NULL
+               THEN CAST((julianday(completed_at) - 2440587.5) * 86400000 AS INTEGER)
+               ELSE NULL END
       FROM backlog;
     `);
     db.exec(`DROP TABLE backlog;`);
@@ -92,26 +142,32 @@ export function openProjectDatabase(sqlitePath: string) {
         issue_id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL DEFAULT 'notStarted',
+        status TEXT NOT NULL DEFAULT 'open',
         severity TEXT NOT NULL DEFAULT 'medium',
         complexity TEXT NOT NULL DEFAULT 'm',
         labels TEXT NOT NULL DEFAULT '[]',
         assignee TEXT,
+        project_id TEXT,
+        batch_id TEXT,
+        requires_approval INTEGER NOT NULL DEFAULT 0,
+        touches_json TEXT,
         source_type TEXT NOT NULL DEFAULT 'internal',
         source_external_id TEXT,
         source_external_url TEXT,
         source_synced_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        completed_at TEXT
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+        completed_at INTEGER,
+        started_at INTEGER,
+        closed_at INTEGER,
+        approved_at INTEGER
       );
     `);
   }
 
-  // If issues table exists but is missing new columns (e.g. created fresh before migration),
-  // add them now
-  if (hasIssues && !hasBacklog) {
-    // Check if source_type column exists
+  // If issues table exists, run incremental column migrations
+  if (hasIssues || (!hasBacklog && !hasIssues)) {
+    // Add source columns if missing (v1 → v1.1)
     try {
       db.prepare(`SELECT source_type FROM issues LIMIT 1`).get();
     } catch {
@@ -119,6 +175,46 @@ export function openProjectDatabase(sqlitePath: string) {
       db.exec(`ALTER TABLE issues ADD COLUMN source_external_id TEXT;`);
       db.exec(`ALTER TABLE issues ADD COLUMN source_external_url TEXT;`);
       db.exec(`ALTER TABLE issues ADD COLUMN source_synced_at TEXT;`);
+    }
+
+    // Add v2 columns if missing (v1.x → v2)
+    const v2Columns: [string, string][] = [
+      ["project_id", "TEXT"],
+      ["batch_id", "TEXT"],
+      ["requires_approval", "INTEGER NOT NULL DEFAULT 0"],
+      ["touches_json", "TEXT"],
+      ["started_at", "INTEGER"],
+      ["closed_at", "INTEGER"],
+      ["approved_at", "INTEGER"],
+    ];
+    for (const [col, def] of v2Columns) {
+      try {
+        db.prepare(`SELECT ${col} FROM issues LIMIT 1`).get();
+      } catch {
+        db.exec(`ALTER TABLE issues ADD COLUMN ${col} ${def};`);
+      }
+    }
+
+    // Migrate TEXT timestamps to INTEGER Unix ms if they're still strings
+    // Detect by checking if created_at looks like an ISO string in any row
+    try {
+      const sample = db.prepare(`SELECT created_at FROM issues LIMIT 1`).get() as
+        | { created_at: unknown }
+        | undefined;
+      if (sample && typeof sample.created_at === "string") {
+        // Still ISO strings — convert all timestamp columns
+        db.exec(`
+          UPDATE issues SET
+            created_at = CAST((julianday(created_at) - 2440587.5) * 86400000 AS INTEGER),
+            updated_at = CAST((julianday(updated_at) - 2440587.5) * 86400000 AS INTEGER),
+            completed_at = CASE WHEN completed_at IS NOT NULL
+              THEN CAST((julianday(completed_at) - 2440587.5) * 86400000 AS INTEGER)
+              ELSE NULL END
+          WHERE typeof(created_at) = 'text';
+        `);
+      }
+    } catch {
+      // No rows or columns don't exist yet — skip
     }
   }
 
@@ -139,8 +235,8 @@ export function openProjectDatabase(sqlitePath: string) {
       session_key TEXT,
       label TEXT,
       status TEXT NOT NULL DEFAULT 'running',
-      started_at TEXT NOT NULL DEFAULT (datetime('now')),
-      ended_at TEXT,
+      started_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+      ended_at INTEGER,
       error TEXT,
       commit_hash TEXT
     );
@@ -158,24 +254,39 @@ export function openProjectDatabase(sqlitePath: string) {
       tags TEXT,
       scope TEXT NOT NULL DEFAULT 'project',
       applied INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
     );
   `);
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_severity ON issues(severity);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_batch_id ON issues(batch_id);`);
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_external ON issues(source_type, source_external_id) WHERE source_external_id IS NOT NULL;`,
   );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_execution_runs_task_id ON execution_runs(task_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_selfimprove_task_id ON selfimprove(task_id);`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_selfimprove_category_applied ON selfimprove(category, applied);`,
+  );
 
   const statements = {
     insertIssue: db.prepare(`
-      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee, source_type, source_external_id, source_external_url, source_synced_at, created_at, updated_at, completed_at)
-      VALUES (@issueId, @title, @description, @status, @severity, @complexity, @labels, @assignee, @sourceType, @sourceExternalId, @sourceExternalUrl, @sourceSyncedAt, @createdAt, @updatedAt, @completedAt)
+      INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee,
+                          project_id, batch_id, requires_approval, touches_json,
+                          source_type, source_external_id, source_external_url, source_synced_at,
+                          created_at, updated_at, completed_at, started_at, closed_at, approved_at)
+      VALUES (@issueId, @title, @description, @status, @severity, @complexity, @labels, @assignee,
+              @projectId, @batchId, @requiresApproval, @touchesJson,
+              @sourceType, @sourceExternalId, @sourceExternalUrl, @sourceSyncedAt,
+              @createdAt, @updatedAt, @completedAt, @startedAt, @closedAt, @approvedAt)
     `),
     getIssue: db.prepare(`SELECT * FROM issues WHERE issue_id = ?`),
     listIssues: db.prepare(`SELECT * FROM issues ORDER BY created_at ASC`),
+    listIssuesByProject: db.prepare(
+      `SELECT * FROM issues WHERE project_id = ? ORDER BY created_at ASC`,
+    ),
     updateIssue: db.prepare(`
       UPDATE issues SET
         title = @title,
@@ -185,12 +296,19 @@ export function openProjectDatabase(sqlitePath: string) {
         complexity = @complexity,
         labels = @labels,
         assignee = @assignee,
+        project_id = @projectId,
+        batch_id = @batchId,
+        requires_approval = @requiresApproval,
+        touches_json = @touchesJson,
         source_type = @sourceType,
         source_external_id = @sourceExternalId,
         source_external_url = @sourceExternalUrl,
         source_synced_at = @sourceSyncedAt,
         updated_at = @updatedAt,
-        completed_at = @completedAt
+        completed_at = @completedAt,
+        started_at = @startedAt,
+        closed_at = @closedAt,
+        approved_at = @approvedAt
       WHERE issue_id = @issueId
     `),
     insertDependency: db.prepare(
@@ -213,6 +331,7 @@ export function openProjectDatabase(sqlitePath: string) {
     db,
     statements,
     addIssue(issue: Issue) {
+      const now = Date.now();
       statements.insertIssue.run({
         issueId: issue.issueId,
         title: issue.title,
@@ -222,13 +341,20 @@ export function openProjectDatabase(sqlitePath: string) {
         complexity: issue.complexity,
         labels: JSON.stringify(issue.labels),
         assignee: issue.assignee ?? null,
+        projectId: issue.projectId ?? null,
+        batchId: issue.batchId ?? null,
+        requiresApproval: issue.requiresApproval ?? 0,
+        touchesJson: issue.touchesJson ?? null,
         sourceType: issue.sourceType ?? "internal",
         sourceExternalId: issue.sourceExternalId ?? null,
         sourceExternalUrl: issue.sourceExternalUrl ?? null,
         sourceSyncedAt: issue.sourceSyncedAt ?? null,
-        createdAt: issue.createdAt,
-        updatedAt: issue.updatedAt,
-        completedAt: issue.completedAt ?? null,
+        createdAt: toUnixMs(issue.createdAt) ?? now,
+        updatedAt: toUnixMs(issue.updatedAt) ?? now,
+        completedAt: toUnixMs(issue.completedAt) ?? null,
+        startedAt: toUnixMs(issue.startedAt) ?? null,
+        closedAt: toUnixMs(issue.closedAt) ?? null,
+        approvedAt: toUnixMs(issue.approvedAt) ?? null,
       });
     },
     getIssue(issueId: string): Issue | undefined {
@@ -240,7 +366,13 @@ export function openProjectDatabase(sqlitePath: string) {
       const rows = statements.listIssues.all() as any[];
       return rows.map(mapRowToIssue);
     },
+    listIssuesByProject(projectId: string): Issue[] {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = statements.listIssuesByProject.all(projectId) as any[];
+      return rows.map(mapRowToIssue);
+    },
     updateIssue(issue: Issue) {
+      const now = Date.now();
       statements.updateIssue.run({
         issueId: issue.issueId,
         title: issue.title,
@@ -250,12 +382,19 @@ export function openProjectDatabase(sqlitePath: string) {
         complexity: issue.complexity,
         labels: JSON.stringify(issue.labels),
         assignee: issue.assignee ?? null,
+        projectId: issue.projectId ?? null,
+        batchId: issue.batchId ?? null,
+        requiresApproval: issue.requiresApproval ?? 0,
+        touchesJson: issue.touchesJson ?? null,
         sourceType: issue.sourceType ?? "internal",
         sourceExternalId: issue.sourceExternalId ?? null,
         sourceExternalUrl: issue.sourceExternalUrl ?? null,
         sourceSyncedAt: issue.sourceSyncedAt ?? null,
-        updatedAt: issue.updatedAt,
-        completedAt: issue.completedAt ?? null,
+        updatedAt: toUnixMs(issue.updatedAt) ?? now,
+        completedAt: toUnixMs(issue.completedAt) ?? null,
+        startedAt: toUnixMs(issue.startedAt) ?? null,
+        closedAt: toUnixMs(issue.closedAt) ?? null,
+        approvedAt: toUnixMs(issue.approvedAt) ?? null,
       });
     },
     // Backward-compatible aliases
@@ -292,6 +431,7 @@ export function openProjectDatabase(sqlitePath: string) {
       }));
     },
     addSelfImprove(entry: Omit<SelfImproveEntry, "id">) {
+      const now = Date.now();
       statements.insertSelfImprove.run({
         taskId: entry.taskId ?? null,
         agentRole: entry.agentRole,
@@ -302,7 +442,7 @@ export function openProjectDatabase(sqlitePath: string) {
         tags: entry.tags ?? null,
         scope: entry.scope,
         applied: entry.applied ? 1 : 0,
-        createdAt: entry.createdAt,
+        createdAt: toUnixMs(entry.createdAt) ?? now,
       });
     },
     listSelfImprove(): SelfImproveEntry[] {
@@ -319,7 +459,7 @@ export function openProjectDatabase(sqlitePath: string) {
         tags: row.tags,
         scope: row.scope,
         applied: Boolean(row.applied),
-        createdAt: row.created_at,
+        createdAt: rowTs(row.created_at) ?? Date.now(),
       }));
     },
     isWalMode(): boolean {
@@ -340,22 +480,30 @@ export function openProjectDatabase(sqlitePath: string) {
       labels?: string[];
       agentRole?: string;
       assignee?: string;
+      projectId?: string;
+      batchId?: string;
+      requiresApproval?: boolean;
+      touchesJson?: string;
       sourceType?: string;
       sourceExternalId?: string;
       sourceExternalUrl?: string;
       sourceSyncedAt?: string;
     }) {
-      const now = new Date().toISOString();
+      const now = Date.now();
       const id = params.issueId || params.taskId || `TASK-${String(Date.now()).slice(-6)}`;
       this.addIssue({
         issueId: id,
         title: params.title,
         description: params.description || "",
-        status: "notStarted",
+        status: "open",
         severity: (params.severity || "medium") as Issue["severity"],
         complexity: (params.complexity || "m") as Issue["complexity"],
         labels: params.labels || params.touches || [],
         assignee: params.assignee || params.agentRole || null,
+        projectId: params.projectId || null,
+        batchId: params.batchId || null,
+        requiresApproval: params.requiresApproval ? 1 : 0,
+        touchesJson: params.touchesJson || null,
         sourceType: (params.sourceType || "internal") as Issue["sourceType"],
         sourceExternalId: params.sourceExternalId || null,
         sourceExternalUrl: params.sourceExternalUrl || null,
@@ -363,20 +511,33 @@ export function openProjectDatabase(sqlitePath: string) {
         createdAt: now,
         updatedAt: now,
         completedAt: null,
+        startedAt: null,
+        closedAt: null,
+        approvedAt: null,
       });
     },
-    updateTask(taskId: string, updates: Record<string, string>) {
+    updateTask(taskId: string, updates: Record<string, unknown>) {
       const existing = this.getIssue(taskId);
       if (!existing) {
         throw new Error(`Issue ${taskId} not found`);
       }
+      const now = Date.now();
       const updated: Issue = {
         ...existing,
-        ...updates,
-        updatedAt: new Date().toISOString(),
+        ...(updates as Partial<Issue>),
+        updatedAt: now,
       };
       if (updates.status === "done" && !existing.completedAt) {
-        updated.completedAt = new Date().toISOString();
+        updated.completedAt = now;
+      }
+      if (updates.status === "in_progress" && !existing.startedAt) {
+        updated.startedAt = now;
+      }
+      if (updates.status === "approved" && !existing.approvedAt) {
+        updated.approvedAt = now;
+      }
+      if ((updates.status === "rejected" || updates.status === "done") && !existing.closedAt) {
+        updated.closedAt = now;
       }
       this.updateIssue(updated);
     },
@@ -395,7 +556,7 @@ export function openProjectDatabase(sqlitePath: string) {
       complexityBreakdown: Record<string, number>;
       total: number;
       selfImproveUnapplied: number;
-      lastActivity: string | null;
+      lastActivity: number | null;
       completedLast7d: number;
       completedLast30d: number;
       blockedCritical: Array<{ taskId: string; title: string; severity: string }>;
@@ -404,7 +565,7 @@ export function openProjectDatabase(sqlitePath: string) {
       const statusBreakdown: Record<string, number> = {};
       const severityBreakdown: Record<string, number> = {};
       const complexityBreakdown: Record<string, number> = {};
-      let lastActivity: string | null = null;
+      let lastActivity: number | null = null;
       let completedLast7d = 0;
       let completedLast30d = 0;
       const now = Date.now();
@@ -414,7 +575,7 @@ export function openProjectDatabase(sqlitePath: string) {
 
       for (const t of issues) {
         statusBreakdown[t.status] = (statusBreakdown[t.status] || 0) + 1;
-        if (t.status !== "done" && t.status !== "cancelled") {
+        if (t.status !== "done" && t.status !== "rejected" && t.status !== "cancelled") {
           severityBreakdown[t.severity] = (severityBreakdown[t.severity] || 0) + 1;
           complexityBreakdown[t.complexity] = (complexityBreakdown[t.complexity] || 0) + 1;
         }
@@ -422,17 +583,17 @@ export function openProjectDatabase(sqlitePath: string) {
           lastActivity = t.updatedAt;
         }
         if (t.completedAt) {
-          const completedMs = new Date(t.completedAt).getTime();
-          if (completedMs >= day7) {
+          if (t.completedAt >= day7) {
             completedLast7d++;
           }
-          if (completedMs >= day30) {
+          if (t.completedAt >= day30) {
             completedLast30d++;
           }
         }
         if (
           t.status === "blocked" ||
           (t.status !== "done" &&
+            t.status !== "rejected" &&
             t.status !== "cancelled" &&
             (t.severity === "critical" || t.severity === "high"))
         ) {
@@ -456,13 +617,20 @@ export function openProjectDatabase(sqlitePath: string) {
       };
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    listTasks(filters?: { status?: string; severity?: string }): Record<string, unknown>[] {
+    listTasks(filters?: {
+      status?: string;
+      severity?: string;
+      projectId?: string;
+    }): Record<string, unknown>[] {
       let issues = this.listIssues();
       if (filters?.status) {
         issues = issues.filter((t) => t.status === filters.status);
       }
       if (filters?.severity) {
         issues = issues.filter((t) => t.severity === filters.severity);
+      }
+      if (filters?.projectId) {
+        issues = issues.filter((t) => t.projectId === filters.projectId);
       }
       return issues.map((t) => ({
         taskId: t.issueId,
@@ -476,6 +644,10 @@ export function openProjectDatabase(sqlitePath: string) {
         labels: t.labels,
         agentRole: t.assignee,
         assignee: t.assignee,
+        projectId: t.projectId,
+        batchId: t.batchId,
+        requiresApproval: t.requiresApproval,
+        touchesJson: t.touchesJson,
         sourceType: t.sourceType,
         sourceExternalId: t.sourceExternalId,
         sourceExternalUrl: t.sourceExternalUrl,
@@ -483,6 +655,9 @@ export function openProjectDatabase(sqlitePath: string) {
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
         completedAt: t.completedAt,
+        startedAt: t.startedAt,
+        closedAt: t.closedAt,
+        approvedAt: t.approvedAt,
       }));
     },
     close() {

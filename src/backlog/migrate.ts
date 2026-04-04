@@ -12,27 +12,30 @@ type TasksJsonEntry = {
   depends_on?: string[];
   blocks?: string[];
   touches?: string[];
+  labels?: string[]; // alias for touches
   assignee?: string;
 };
 
-// Map v1 status names to v2
+// Map v1 status names to v2 enum
 function mapStatus(status?: string): string {
   const map: Record<string, string> = {
-    open: "notStarted",
-    not_started: "notStarted",
-    notStarted: "notStarted",
-    in_progress: "inProgress",
-    inProgress: "inProgress",
-    in_review: "inReview",
-    inReview: "inReview",
+    open: "open",
+    not_started: "open",
+    notStarted: "open",
+    in_progress: "in_progress",
+    inProgress: "in_progress",
+    in_review: "in_progress",
+    inReview: "in_progress",
+    approved: "approved",
     done: "done",
     complete: "done",
     completed: "done",
     blocked: "blocked",
-    cancelled: "cancelled",
-    canceled: "cancelled",
+    rejected: "rejected",
+    cancelled: "rejected",
+    canceled: "rejected",
   };
-  return map[status || ""] || "notStarted";
+  return map[status || ""] || "open";
 }
 
 export function migrateFromTasksJson(
@@ -73,7 +76,9 @@ export function migrateFromTasksJson(
         continue;
       }
 
-      const now = new Date().toISOString();
+      const now = Date.now();
+      const isDone =
+        entry.status === "done" || entry.status === "complete" || entry.status === "completed";
       db.addIssue({
         issueId: entry.id,
         title: entry.title,
@@ -81,18 +86,25 @@ export function migrateFromTasksJson(
         status: mapStatus(entry.status) as import("./types.js").IssueStatus,
         severity: (entry.severity || "medium") as import("./types.js").IssueSeverity,
         complexity: (entry.complexity || "m") as import("./types.js").IssueComplexity,
-        labels: entry.touches || [],
+        labels: entry.touches || entry.labels || [],
         assignee: entry.assignee || null,
+        projectId: null,
+        batchId: null,
+        requiresApproval: 0,
+        touchesJson:
+          (entry.touches || entry.labels) && (entry.touches || entry.labels)!.length > 0
+            ? JSON.stringify(entry.touches || entry.labels)
+            : null,
         sourceType: "internal",
         sourceExternalId: null,
         sourceExternalUrl: null,
         sourceSyncedAt: null,
         createdAt: now,
         updatedAt: now,
-        completedAt:
-          entry.status === "done" || entry.status === "complete" || entry.status === "completed"
-            ? now
-            : null,
+        completedAt: isDone ? now : null,
+        startedAt: null,
+        closedAt: isDone ? now : null,
+        approvedAt: null,
       });
 
       // Import dependencies

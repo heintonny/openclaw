@@ -4,9 +4,10 @@ import type { BacklogDependency, BacklogTask } from "./types.js";
 
 function makeTask(
   issueId: string,
-  status: BacklogTask["status"] = "notStarted",
+  status: BacklogTask["status"] = "open",
   severity: BacklogTask["severity"] = "medium",
 ): BacklogTask {
+  const now = Date.now();
   return {
     issueId,
     title: `Task ${issueId}`,
@@ -16,13 +17,20 @@ function makeTask(
     complexity: "m",
     labels: [],
     assignee: null,
+    projectId: null,
+    batchId: null,
+    requiresApproval: 0,
+    touchesJson: null,
     sourceType: "internal",
     sourceExternalId: null,
     sourceExternalUrl: null,
     sourceSyncedAt: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     completedAt: null,
+    startedAt: null,
+    closedAt: null,
+    approvedAt: null,
   };
 }
 
@@ -114,11 +122,7 @@ describe("planBatch", () => {
   });
 
   it("returns only tasks with all deps satisfied (done)", () => {
-    const tasks = [
-      makeTask("T1", "notStarted"),
-      makeTask("T2", "done"),
-      makeTask("T3", "notStarted"),
-    ];
+    const tasks = [makeTask("T1", "open"), makeTask("T2", "done"), makeTask("T3", "open")];
     const deps: BacklogDependency[] = [
       { issueId: "T1", dependsOn: "T2" }, // T1 depends on T2 (done) → ready
       { issueId: "T3", dependsOn: "T1" }, // T3 depends on T1 (notStarted) → blocked
@@ -129,12 +133,12 @@ describe("planBatch", () => {
     expect(ids).not.toContain("T3");
   });
 
-  it("excludes tasks that are not notStarted", () => {
+  it("excludes tasks that are not open/notStarted", () => {
     const tasks = [
-      makeTask("T1", "inProgress"),
+      makeTask("T1", "in_progress"),
       makeTask("T2", "done"),
-      makeTask("T3", "cancelled"),
-      makeTask("T4", "notStarted"),
+      makeTask("T3", "rejected"),
+      makeTask("T4", "open"),
     ];
     const result = planBatch(tasks, []);
     expect(result).toHaveLength(1);
@@ -156,10 +160,10 @@ describe("planBatch", () => {
 
   it("sorts by severity: critical first", () => {
     const tasks = [
-      makeTask("low-task", "notStarted", "low"),
-      makeTask("critical-task", "notStarted", "critical"),
-      makeTask("medium-task", "notStarted", "medium"),
-      makeTask("high-task", "notStarted", "high"),
+      makeTask("low-task", "open", "low"),
+      makeTask("critical-task", "open", "critical"),
+      makeTask("medium-task", "open", "medium"),
+      makeTask("high-task", "open", "high"),
     ];
     const result = planBatch(tasks, []);
     expect(result[0].issueId).toBe("critical-task");
@@ -169,7 +173,7 @@ describe("planBatch", () => {
   });
 
   it("returns empty array when no tasks are ready", () => {
-    const tasks = [makeTask("T1", "notStarted")];
+    const tasks = [makeTask("T1", "open")];
     const deps: BacklogDependency[] = [
       { issueId: "T1", dependsOn: "T2" }, // T2 doesn't exist in tasks
     ];

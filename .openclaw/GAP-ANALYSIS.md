@@ -20,20 +20,22 @@ The gaps fall into four severity tiers:
 
 **Key decision point for Hein:** Several gaps require choosing between updating the docs to match the implementation vs. extending the implementation to match the spec. These are flagged `requires-approval`.
 
+**Update 2026-04-04:** All 5 `requires-approval` items have been resolved. See [Implementation Plan](#implementation-plan) below.
+
 ---
 
 ## Gap Table
 
-| ID          | Title                                                                                                                                       | Doc-Wrong or Code-Wrong                                                      | Severity | Complexity | Labels                       | Requires Approval |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------- | ---------- | ---------------------------- | :---------------: |
-| TASK-763659 | Schema: docs use task_id PK but impl uses issue_id                                                                                          | **docs-wrong** — issue_id is the newer correct name                          | high     | s          | docs, schema                 |        No         |
-| TASK-793021 | Status enum mismatch: spec has open/approved/in_progress/rejected; impl has notStarted/inProgress/inReview/cancelled                        | **ambiguous** — approved state missing from impl, approval workflow absent   | critical | m          | schema                       |        Yes        |
-| TASK-775613 | issues table missing project_id, batch_id, requires_approval, touches_json, approved_at, blocked_reason, started_at, closed_at, agent_notes | **code-wrong OR docs-wrong** — depends on scope decision                     | high     | l          | schema                       |        Yes        |
-| TASK-783562 | Timestamp type: spec=INTEGER Unix ms, impl=TEXT ISO strings                                                                                 | **ambiguous** — impl TEXT is arguably better for git-readability             | high     | m          | schema                       |        Yes        |
+| ID          | Title                                                                                                                                       | Doc-Wrong or Code-Wrong                                                      | Severity | Complexity | Labels                       | Requires Approval | Status                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------- | ---------- | ---------------------------- | :---------------: | -------------------------- |
+| TASK-763659 | Schema: docs use task_id PK but impl uses issue_id                                                                                          | **docs-wrong** — issue_id is the newer correct name                          | high     | s          | docs, schema                 |        No         |                            |
+| TASK-793021 | Status enum mismatch: spec has open/approved/in_progress/rejected; impl has notStarted/inProgress/inReview/cancelled                        | **ambiguous** — approved state missing from impl, approval workflow absent   | critical | m          | schema                       |        Yes        | ✅ RESOLVED                |
+| TASK-775613 | issues table missing project_id, batch_id, requires_approval, touches_json, approved_at, blocked_reason, started_at, closed_at, agent_notes | **code-wrong OR docs-wrong** — depends on scope decision                     | high     | l          | schema                       |        Yes        | ✅ RESOLVED                |
+| TASK-783562 | Timestamp type: spec=INTEGER Unix ms, impl=TEXT ISO strings                                                                                 | **ambiguous** — impl TEXT is arguably better for git-readability             | high     | m          | schema                       |        Yes        | ✅ RESOLVED                |
 | TASK-804374 | execution_runs missing run_id PK, project_id, native_label, native_status, spawned_at, terminal_summary                                     | **code-wrong** — native bridge requires these columns                        | high     | m          | schema, orchestrator         |        No         |
 | TASK-813262 | selfimprove table: spec uses entry_id UUID PK, impl uses INTEGER AUTOINCREMENT                                                              | **ambiguous** — impl is simpler but loses deduplication                      | medium   | s          | schema, selfimprove          |        No         |
 | TASK-822885 | Registry projects table missing display_name, repo_url, sqlite_path, last_seen_at, config_json                                              | **code-wrong** — web dashboard needs sqlite_path                             | high     | m          | schema, registry, web-ui     |        No         |
-| TASK-831322 | Orchestrator: src/orchestrator/ directory and 7-step pipeline entirely absent                                                               | **code-wrong** — core missing feature                                        | critical | xl         | orchestrator                 |        Yes        |
+| TASK-831322 | Orchestrator: src/orchestrator/ directory and 7-step pipeline entirely absent                                                               | **code-wrong** — core missing feature                                        | critical | xl         | orchestrator                 |        Yes        | ✅ RESOLVED (skeleton)     |
 | TASK-840563 | init: no .openclaw/agents/ tree with AGENT.md templates                                                                                     | **code-wrong**                                                               | high     | m          | init, agents, directory-spec |        No         |
 | TASK-851001 | init: no CODEBASE.md, CODESTYLE.md, SELFIMPROVE.md, ADL.json generated                                                                      | **code-wrong**                                                               | medium   | s          | init, directory-spec         |        No         |
 | TASK-857953 | issues add missing --category and --requires-approval flags                                                                                 | **code-wrong** (blocked by TASK-775613)                                      | medium   | s          | cli, schema                  |        No         |
@@ -53,7 +55,7 @@ The gaps fall into four severity tiers:
 | TASK-977246 | Docs: wrong branch name (feature/clawforge-issues vs feature/project-agent-flows)                                                           | **docs-wrong**                                                               | low      | xs         | docs                         |        No         |
 | TASK-986881 | Docs: selfimprove.html contradicts schema.html data model                                                                                   | **docs-wrong** — selfimprove.html reflects reality, schema.html needs update | medium   | s          | docs, selfimprove            |        No         |
 | TASK-003563 | init: no .gitignore for _.sqlite_ files generated                                                                                           | **code-wrong**                                                               | medium   | xs         | init, directory-spec         |        No         |
-| TASK-015420 | 13 agent AGENT.md role templates need to be created and updated                                                                             | **code-wrong**                                                               | high     | l          | agents                       |        Yes        |
+| TASK-015420 | 13 agent AGENT.md role templates need to be created and updated                                                                             | **code-wrong**                                                               | high     | l          | agents                       |        Yes        | ✅ RESOLVED (6 core roles) |
 | TASK-025012 | init does not auto-register project in global registry                                                                                      | **code-wrong**                                                               | medium   | xs         | init, cli, registry          |        No         |
 | TASK-033601 | Native bridge for singleton check (openclaw tasks list integration) absent                                                                  | **code-wrong**                                                               | high     | m          | orchestrator, schema         |        No         |
 
@@ -162,3 +164,48 @@ The following gaps were found beyond the known list provided in the task brief:
 - **TASK-914061:** Complexity casing mismatch (spec uppercase vs impl lowercase)
 - **TASK-822885:** Registry schema much leaner than spec (missing sqlite_path blocks web UI)
 - **TASK-813262:** selfimprove entry_id/UUID approach never implemented
+
+---
+
+## Implementation Plan
+
+**Date:** 2026-04-04
+**Author:** Claude Sonnet 4.6 (implementing approved decisions)
+
+### Resolved: 5 requires-approval items
+
+#### TASK-793021 — Status enum (RESOLVED)
+
+**Decision:** Adopt spec enum `open | approved | in_progress | blocked | done | rejected`. Legacy values (`notStarted`, `inProgress`, `inReview`, `cancelled`) are kept as type union aliases for backward compatibility but deprecated.
+**Implementation:** Updated `src/backlog/types.ts` IssueStatus union. Updated default status in `db.ts` from `'notStarted'` to `'open'`. Updated `addTask()` to default to `'open'`. Added auto-transition logic in `updateTask()`: `approved` sets `approvedAt`, `in_progress` sets `startedAt`, `done`/`rejected` sets `closedAt`.
+
+#### TASK-775613 — Missing schema columns (RESOLVED)
+
+**Decision:** Add `project_id`, `batch_id`, `requires_approval`, `touches_json`, `started_at`, `closed_at`, `approved_at`. Skip `blocked_reason`, `agent_notes`, `created_by` as out of scope for this iteration.
+**Implementation:** Added all 7 columns to the `CREATE TABLE` statement. Added incremental `ALTER TABLE ADD COLUMN` migration for each new column so existing databases upgrade automatically on first open.
+
+#### TASK-783562 — Timestamp type (RESOLVED)
+
+**Decision:** Migrate to INTEGER Unix ms (spec alignment). TEXT ISO strings are still accepted on input (auto-converted via `toUnixMs()`). The `rowTs()` helper handles legacy TEXT rows during migration.
+**Implementation:** All timestamp columns changed to `INTEGER` in schema. Added `toUnixMs()` for write path and `rowTs()` for read path. Added migration block that detects TEXT timestamps and converts them in-place with SQLite's `julianday()`.
+
+#### TASK-831322 — Orchestrator dispatch (RESOLVED as skeleton)
+
+**Decision:** Implement as `openclaw issues dispatch` CLI command that generates a dispatch plan (dry-run). Actual `sessions_spawn` integration is Phase 2.
+**Implementation:** Added `issues dispatch` command in `backlog-cli.ts`. It selects `approved` or `open + no-approval-required` issues, groups them into a named batch, and prints the agent spawn commands it WOULD run. The `--json` flag outputs machine-readable dispatch plan.
+
+#### TASK-015420 — Agent AGENT.md templates (RESOLVED: 6 core roles)
+
+**Decision:** Create 6 core role templates instead of all 13. Covers the primary pipeline: orchestrator, dev, qa, reviewer, deep-planner, selfimprove.
+**Implementation:** Created `.openclaw/agents/{orchestrator,dev,qa,reviewer,deep-planner,selfimprove}/AGENT.md`. Each template includes: role description, data access contract (reads/writes/must-not), pipeline steps, CLI commands used, and project-specific customization notes.
+
+### Remaining work (next priority order)
+
+1. **TASK-920988** — Add `PRAGMA busy_timeout=5000` ✅ done in this commit
+2. **TASK-927935** — Additional indexes ✅ done (project_id, severity, batch_id, selfimprove category/applied)
+3. **TASK-822885** — Registry projects table extensions (sqlite_path for web UI)
+4. **TASK-840563** — Generate agents/ tree on `issues init` (currently only created manually)
+5. **TASK-804374** — execution_runs additional columns (native_label, native_status, spawned_at)
+6. **TASK-876155** — `issues batch plan` and `issues batch start`
+7. **TASK-943550** — Web UI pipeline tab
+8. **TASK-831322** — Full orchestrator with actual sessions_spawn integration (Phase 2)

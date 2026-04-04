@@ -2,11 +2,16 @@
 export type IssueSeverity = "critical" | "high" | "medium" | "low";
 export type IssueComplexity = "xs" | "s" | "m" | "l" | "xl";
 export type IssueStatus =
+  | "open"
+  | "approved"
+  | "in_progress"
+  | "blocked"
+  | "done"
+  | "rejected"
+  // Legacy aliases kept for backward compatibility
   | "notStarted"
   | "inProgress"
   | "inReview"
-  | "done"
-  | "blocked"
   | "cancelled";
 
 export type Issue = {
@@ -18,14 +23,23 @@ export type Issue = {
   complexity: IssueComplexity;
   labels: string[]; // files/areas this issue affects
   assignee: string | null; // dev, qa, reviewer, etc.
+  // Project/batch grouping
+  projectId: string | null;
+  batchId: string | null;
+  requiresApproval: number; // 0 or 1
+  touchesJson: string | null; // JSON array of file paths
   // Source fields for external issue tracking
   sourceType: "internal" | "github" | "linear" | "jira";
   sourceExternalId: string | null;
   sourceExternalUrl: string | null;
   sourceSyncedAt: string | null;
-  createdAt: string; // ISO datetime
-  updatedAt: string;
-  completedAt: string | null;
+  // Timestamps (stored as Unix ms integers in DB, but surface as number)
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number | null;
+  startedAt: number | null;
+  closedAt: number | null;
+  approvedAt: number | null;
 };
 
 export type IssueDependency = {
@@ -48,8 +62,8 @@ export type ExecutionRun = {
   sessionKey: string | null;
   label: string | null; // OpenClaw task label
   status: string;
-  startedAt: string;
-  endedAt: string | null;
+  startedAt: number; // Unix ms
+  endedAt: number | null;
   error: string | null;
   commitHash: string | null;
 };
@@ -65,5 +79,5 @@ export type SelfImproveEntry = {
   tags: string | null;
   scope: "project" | "global";
   applied: boolean;
-  createdAt: string;
+  createdAt: number; // Unix ms
 };

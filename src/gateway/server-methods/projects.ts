@@ -32,7 +32,7 @@ export const projectsHandlers: GatewayRequestHandlers = {
           registeredAt: p.registeredAt,
           stats: {
             total: detailedStats?.total ?? 0,
-            active: statusBreakdown.inProgress ?? 0,
+            active: (statusBreakdown.in_progress ?? 0) + (statusBreakdown.inProgress ?? 0),
             done: statusBreakdown.done ?? 0,
           },
           detailedStats,

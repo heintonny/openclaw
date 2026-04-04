@@ -93,7 +93,8 @@ export function planBatch(
 
   const ready: Issue[] = [];
   for (const issue of issues) {
-    if (issue.status !== "notStarted") {
+    // Dispatchable statuses: open (v2) or notStarted (legacy)
+    if (issue.status !== "open" && issue.status !== "notStarted") {
       continue;
     }
     const deps = depsByIssue.get(issue.issueId) || [];

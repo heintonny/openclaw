@@ -68,7 +68,7 @@ describe("backlog/migrate", () => {
 
       const task2 = db.getBacklogTask("UI-54");
       expect(task2).toBeDefined();
-      expect(task2?.status).toBe("inProgress");
+      expect(task2?.status).toBe("in_progress");
       expect(task2?.completedAt).toBeNull();
     } finally {
       db.close();
@@ -184,20 +184,20 @@ describe("backlog/migrate", () => {
     const dbPath = resolveProjectSqlitePath(tempDir);
     const db = openProjectDatabase(dbPath);
     try {
-      expect(db.getBacklogTask("S-01")?.status).toBe("notStarted");
-      expect(db.getBacklogTask("S-02")?.status).toBe("notStarted");
-      expect(db.getBacklogTask("S-03")?.status).toBe("notStarted");
-      expect(db.getBacklogTask("S-04")?.status).toBe("inProgress");
-      expect(db.getBacklogTask("S-05")?.status).toBe("inProgress");
-      expect(db.getBacklogTask("S-06")?.status).toBe("inReview");
-      expect(db.getBacklogTask("S-07")?.status).toBe("inReview");
+      expect(db.getBacklogTask("S-01")?.status).toBe("open");
+      expect(db.getBacklogTask("S-02")?.status).toBe("open");
+      expect(db.getBacklogTask("S-03")?.status).toBe("open");
+      expect(db.getBacklogTask("S-04")?.status).toBe("in_progress");
+      expect(db.getBacklogTask("S-05")?.status).toBe("in_progress");
+      expect(db.getBacklogTask("S-06")?.status).toBe("in_progress");
+      expect(db.getBacklogTask("S-07")?.status).toBe("in_progress");
       expect(db.getBacklogTask("S-08")?.status).toBe("done");
       expect(db.getBacklogTask("S-09")?.status).toBe("done");
       expect(db.getBacklogTask("S-10")?.status).toBe("done");
       expect(db.getBacklogTask("S-11")?.status).toBe("blocked");
-      expect(db.getBacklogTask("S-12")?.status).toBe("cancelled");
-      expect(db.getBacklogTask("S-13")?.status).toBe("cancelled");
-      expect(db.getBacklogTask("S-14")?.status).toBe("notStarted"); // unknown → default
+      expect(db.getBacklogTask("S-12")?.status).toBe("rejected");
+      expect(db.getBacklogTask("S-13")?.status).toBe("rejected");
+      expect(db.getBacklogTask("S-14")?.status).toBe("open"); // unknown → default
     } finally {
       db.close();
     }
@@ -216,7 +216,7 @@ describe("backlog/migrate", () => {
     try {
       const task = db.getBacklogTask("MIN-01");
       expect(task).toBeDefined();
-      expect(task?.status).toBe("notStarted");
+      expect(task?.status).toBe("open");
       expect(task?.severity).toBe("medium");
       expect(task?.complexity).toBe("m");
       expect(task?.description).toBe("");

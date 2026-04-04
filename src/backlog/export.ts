@@ -29,8 +29,20 @@ export function exportIssues(
   }
   md += `| **Total** | **${tasks.length}** |\n\n`;
 
-  // Task sections grouped by status
-  const statusOrder = ["inProgress", "notStarted", "blocked", "inReview", "done", "cancelled"];
+  // Task sections grouped by status (v2 enum first, then legacy aliases)
+  const statusOrder = [
+    "in_progress",
+    "approved",
+    "open",
+    "blocked",
+    "done",
+    "rejected",
+    // legacy
+    "inProgress",
+    "notStarted",
+    "inReview",
+    "cancelled",
+  ];
   for (const status of statusOrder) {
     const items = byStatus[status];
     if (!items || items.length === 0) {
