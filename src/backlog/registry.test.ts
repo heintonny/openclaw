@@ -20,17 +20,30 @@ describe("openProjectRegistry", () => {
   it("registers and retrieves a project", () => {
     const reg = openProjectRegistry();
     reg.register("proj-1", "/repos/my-repo");
-    const repos = reg.getProject("proj-1");
-    expect(repos).toEqual(["/repos/my-repo"]);
+    const projects = reg.getProject("proj-1");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].projectId).toBe("proj-1");
+    expect(projects[0].repoPath).toBe("/repos/my-repo");
+    expect(projects[0].displayName).toBeNull();
+    expect(projects[0].repoUrl).toBeNull();
+    expect(projects[0].sqlitePath).toBeNull();
+    expect(projects[0].lastSeenAt).toBeNull();
+    expect(projects[0].configJson).toBeNull();
+    expect(projects[0].registeredAt).toBeGreaterThan(0);
     reg.close();
   });
 
-  it("register is idempotent (INSERT OR IGNORE)", () => {
+  it("register is idempotent and updates fields on conflict", () => {
     const reg = openProjectRegistry();
     reg.register("proj-1", "/repos/my-repo");
-    reg.register("proj-1", "/repos/my-repo");
-    const repos = reg.getProject("proj-1");
-    expect(repos).toHaveLength(1);
+    reg.register("proj-1", "/repos/my-repo", {
+      displayName: "My Project",
+      repoUrl: "https://github.com/user/repo",
+    });
+    const projects = reg.getProject("proj-1");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].displayName).toBe("My Project");
+    expect(projects[0].repoUrl).toBe("https://github.com/user/repo");
     reg.close();
   });
 
@@ -38,8 +51,8 @@ describe("openProjectRegistry", () => {
     const reg = openProjectRegistry();
     reg.register("proj-1", "/repos/my-repo");
     reg.unregister("proj-1", "/repos/my-repo");
-    const repos = reg.getProject("proj-1");
-    expect(repos).toHaveLength(0);
+    const projects = reg.getProject("proj-1");
+    expect(projects).toHaveLength(0);
     reg.close();
   });
 
@@ -48,11 +61,12 @@ describe("openProjectRegistry", () => {
     reg.register("proj-multi", "/repos/repo-a");
     reg.register("proj-multi", "/repos/repo-b");
     reg.register("proj-multi", "/repos/repo-c");
-    const repos = reg.getProject("proj-multi");
-    expect(repos).toHaveLength(3);
-    expect(repos).toContain("/repos/repo-a");
-    expect(repos).toContain("/repos/repo-b");
-    expect(repos).toContain("/repos/repo-c");
+    const projects = reg.getProject("proj-multi");
+    expect(projects).toHaveLength(3);
+    const paths = projects.map((p) => p.repoPath);
+    expect(paths).toContain("/repos/repo-a");
+    expect(paths).toContain("/repos/repo-b");
+    expect(paths).toContain("/repos/repo-c");
     reg.close();
   });
 
@@ -80,8 +94,8 @@ describe("openProjectRegistry", () => {
 
   it("getProject returns empty array for unknown project", () => {
     const reg = openProjectRegistry();
-    const repos = reg.getProject("nonexistent");
-    expect(repos).toEqual([]);
+    const projects = reg.getProject("nonexistent");
+    expect(projects).toEqual([]);
     reg.close();
   });
 
@@ -96,8 +110,92 @@ describe("openProjectRegistry", () => {
     reg.register("proj-x", "/repos/keep");
     reg.register("proj-x", "/repos/remove");
     reg.unregister("proj-x", "/repos/remove");
-    const repos = reg.getProject("proj-x");
-    expect(repos).toEqual(["/repos/keep"]);
+    const projects = reg.getProject("proj-x");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].repoPath).toBe("/repos/keep");
     reg.close();
+  });
+
+  it("registers project with all optional fields", () => {
+    const reg = openProjectRegistry();
+    const now = Date.now();
+    reg.register("proj-full", "/repos/full-repo", {
+      displayName: "Full Project",
+      repoUrl: "https://github.com/user/full-repo",
+      sqlitePath: "/repos/full-repo/.openclaw/project.sqlite",
+      lastSeenAt: now,
+      configJson: JSON.stringify({ key: "value" }),
+    });
+    const projects = reg.getProject("proj-full");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].displayName).toBe("Full Project");
+    expect(projects[0].repoUrl).toBe("https://github.com/user/full-repo");
+    expect(projects[0].sqlitePath).toBe("/repos/full-repo/.openclaw/project.sqlite");
+    expect(projects[0].lastSeenAt).toBe(now);
+    expect(projects[0].configJson).toBe(JSON.stringify({ key: "value" }));
+    reg.close();
+  });
+
+  it("updates project fields", () => {
+    const reg = openProjectRegistry();
+    reg.register("proj-update", "/repos/update-repo");
+    const now = Date.now();
+    reg.updateProject("proj-update", "/repos/update-repo", {
+      displayName: "Updated Name",
+      repoUrl: "https://github.com/user/updated",
+      lastSeenAt: now,
+    });
+    const projects = reg.getProject("proj-update");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].displayName).toBe("Updated Name");
+    expect(projects[0].repoUrl).toBe("https://github.com/user/updated");
+    expect(projects[0].lastSeenAt).toBe(now);
+    reg.close();
+  });
+
+  it("getProjectByPath returns project by repo path", () => {
+    const reg = openProjectRegistry();
+    reg.register("proj-by-path", "/repos/by-path", {
+      displayName: "By Path Project",
+    });
+    const project = reg.getProjectByPath("/repos/by-path");
+    expect(project).not.toBeNull();
+    expect(project?.projectId).toBe("proj-by-path");
+    expect(project?.displayName).toBe("By Path Project");
+    reg.close();
+  });
+
+  it("getProjectByPath returns null for unknown path", () => {
+    const reg = openProjectRegistry();
+    const project = reg.getProjectByPath("/repos/unknown");
+    expect(project).toBeNull();
+    reg.close();
+  });
+
+  it("handles migration from old schema to new schema", () => {
+    const reg = openProjectRegistry();
+    const db = reg.db;
+
+    db.exec("DROP TABLE IF EXISTS projects");
+    db.exec(`
+      CREATE TABLE projects (
+        project_id TEXT NOT NULL,
+        repo_path TEXT NOT NULL,
+        registered_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (project_id, repo_path)
+      );
+    `);
+    db.exec(
+      "INSERT INTO projects (project_id, repo_path, registered_at) VALUES ('old-proj', '/repos/old', '2026-01-01 12:00:00')",
+    );
+
+    reg.close();
+
+    const reg2 = openProjectRegistry();
+    const projects = reg2.getProject("old-proj");
+    expect(projects).toHaveLength(1);
+    expect(typeof projects[0].registeredAt).toBe("number");
+    expect(projects[0].registeredAt).toBeGreaterThan(0);
+    reg2.close();
   });
 });
