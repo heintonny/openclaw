@@ -284,3 +284,15 @@
 - For manual `openclaw message send` messages that include `!`, use the heredoc pattern noted below to avoid the Bash tool’s escaping.
 - Release guardrails: do not change version numbers without operator’s explicit consent; always ask permission before running any npm publish/release step.
 - Beta release guardrail: when using a beta Git tag (for example `vYYYY.M.D-beta.N`), publish npm with a matching beta version suffix (for example `YYYY.M.D-beta.N`) rather than a plain version on `--tag beta`; otherwise the plain version name gets consumed/blocked.
+
+## Cursor Cloud specific instructions
+
+- **Dependencies**: `pnpm install --frozen-lockfile` refreshes all workspace deps. Bun is also installed (`~/.bun/bin/bun`) for TS execution per repo conventions.
+- **Build**: `pnpm build` compiles TypeScript to `dist/`. Required before first gateway start or when touching module boundaries.
+- **Lint/typecheck**: `pnpm check` is the local dev gate (oxlint + tsgo + policy checks). See "Build, Test, and Development Commands" above for details.
+- **Tests**: `pnpm test` runs the full Vitest suite. For memory-constrained environments, use `OPENCLAW_TEST_PROFILE=serial pnpm test`. For scoped tests: `pnpm test -- <path-or-filter>`.
+- **Known test flake on Linux**: `src/daemon/service-env.test.ts` has 2 failures expecting `NODE_EXTRA_CA_CERTS` to be undefined on non-macOS, but the code correctly detects the Linux CA bundle. These are pre-existing and not caused by agent changes.
+- **Running the CLI in dev**: `pnpm openclaw <command>` (runs via Bun/Node through `scripts/run-node.mjs`).
+- **Gateway**: `pnpm openclaw gateway run --bind loopback --port 18789 --force` starts the gateway in the foreground. No external databases or services are required; state lives under `~/.openclaw/`.
+- **Gateway config**: Run `pnpm openclaw config set gateway.mode local` before first gateway start.
+- **No external services needed**: OpenClaw is local-first; no databases, Redis, or Docker are required for core dev/test. AI provider API keys are only needed for live/e2e tests and actual assistant usage.
