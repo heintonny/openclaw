@@ -229,16 +229,22 @@ export function openProjectDatabase(sqlitePath: string) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS execution_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL UNIQUE,
       task_id TEXT NOT NULL,
+      project_id TEXT,
       agent_role TEXT NOT NULL,
       runtime TEXT NOT NULL,
       session_key TEXT,
       label TEXT,
+      native_label TEXT,
       status TEXT NOT NULL DEFAULT 'running',
+      native_status TEXT,
       started_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+      spawned_at INTEGER,
       ended_at INTEGER,
       error TEXT,
-      commit_hash TEXT
+      commit_hash TEXT,
+      terminal_summary TEXT
     );
   `);
 
@@ -258,6 +264,42 @@ export function openProjectDatabase(sqlitePath: string) {
     );
   `);
 
+  // Migration: add new execution_runs columns if they don't exist
+  const executionRunsColumns: [string, string][] = [
+    ["run_id", "TEXT NOT NULL DEFAULT ''"],
+    ["project_id", "TEXT"],
+    ["native_label", "TEXT"],
+    ["native_status", "TEXT"],
+    ["spawned_at", "INTEGER"],
+    ["terminal_summary", "TEXT"],
+  ];
+  for (const [col, def] of executionRunsColumns) {
+    try {
+      db.prepare(`SELECT ${col} FROM execution_runs LIMIT 1`).get();
+    } catch {
+      db.exec(`ALTER TABLE execution_runs ADD COLUMN ${col} ${def};`);
+    }
+  }
+
+  // Ensure run_id is unique and populated for existing rows
+  try {
+    db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_runs_run_id ON execution_runs(run_id);`,
+    );
+  } catch {
+    // If index creation fails, populate empty run_id values with UUIDs
+    const rowsNeedingRunId = db
+      .prepare(`SELECT id FROM execution_runs WHERE run_id = '' OR run_id IS NULL`)
+      .all() as Array<{ id: number }>;
+    for (const row of rowsNeedingRunId) {
+      const uuid = `run-${row.id}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      db.prepare(`UPDATE execution_runs SET run_id = ? WHERE id = ?`).run(uuid, row.id);
+    }
+    db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_runs_run_id ON execution_runs(run_id);`,
+    );
+  }
+
   db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_issues_severity ON issues(severity);`);
@@ -266,6 +308,9 @@ export function openProjectDatabase(sqlitePath: string) {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_external ON issues(source_type, source_external_id) WHERE source_external_id IS NOT NULL;`,
   );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_execution_runs_task_id ON execution_runs(task_id);`);
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_execution_runs_project_id ON execution_runs(project_id);`,
+  );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_selfimprove_task_id ON selfimprove(task_id);`);
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_selfimprove_category_applied ON selfimprove(category, applied);`,

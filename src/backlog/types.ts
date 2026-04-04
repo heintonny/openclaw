@@ -56,16 +56,22 @@ export type BacklogDependency = IssueDependency;
 
 export type ExecutionRun = {
   id: number;
+  runId: string; // UUID primary key for native bridge
   taskId: string;
+  projectId: string | null;
   agentRole: string;
   runtime: string; // subagent, acp, cli
   sessionKey: string | null;
   label: string | null; // OpenClaw task label
+  nativeLabel: string | null; // Format: {project_id}/{task_id} for native bridge
   status: string;
+  nativeStatus: string | null; // Native task status from OpenClaw
   startedAt: number; // Unix ms
+  spawnedAt: number | null; // Unix ms - when the run was spawned
   endedAt: number | null;
   error: string | null;
   commitHash: string | null;
+  terminalSummary: string | null; // Summary of terminal output
 };
 
 export type SelfImproveEntry = {
