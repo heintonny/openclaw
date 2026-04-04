@@ -226,4 +226,80 @@ describe("backlog/db", () => {
     expect(list[0].applied).toBe(false);
     expect(list[0].createdAt).toBeTypeOf("number");
   });
+
+  it("execution_runs table has new schema columns", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    const now = Date.now();
+    const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
+    dbInstance.db
+      .prepare(
+        `INSERT INTO execution_runs (run_id, task_id, project_id, agent_role, runtime, native_label, status, native_status, started_at, spawned_at, terminal_summary)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        runId,
+        "TASK-001",
+        "test-project",
+        "dev",
+        "subagent",
+        "test-project/TASK-001",
+        "running",
+        "in_progress",
+        now,
+        now - 1000,
+        "Build completed successfully",
+      );
+
+    const row = dbInstance.db
+      .prepare(`SELECT * FROM execution_runs WHERE run_id = ?`)
+      .get(runId) as {
+      run_id: string;
+      task_id: string;
+      project_id: string;
+      native_label: string;
+      native_status: string;
+      spawned_at: number;
+      terminal_summary: string;
+    };
+
+    expect(row.run_id).toBe(runId);
+    expect(row.task_id).toBe("TASK-001");
+    expect(row.project_id).toBe("test-project");
+    expect(row.native_label).toBe("test-project/TASK-001");
+    expect(row.native_status).toBe("in_progress");
+    expect(row.spawned_at).toBeTypeOf("number");
+    expect(row.terminal_summary).toBe("Build completed successfully");
+  });
+
+  it("execution_runs migration creates unique run_id for existing rows", () => {
+    const sqlitePath = resolveProjectSqlitePath(tempDir);
+    initProjectDirectory(tempDir);
+    dbInstance = openProjectDatabase(sqlitePath);
+
+    const hasRunIdColumn = () => {
+      try {
+        dbInstance.db.prepare(`SELECT run_id FROM execution_runs LIMIT 1`).get();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    expect(hasRunIdColumn()).toBe(true);
+
+    const hasUniqueIndex = () => {
+      const indexes = dbInstance.db
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='execution_runs' AND name='idx_execution_runs_run_id'`,
+        )
+        .get() as { name: string } | undefined;
+      return !!indexes;
+    };
+
+    expect(hasUniqueIndex()).toBe(true);
+  });
 });
