@@ -75,6 +75,7 @@ function mapRowToIssue(row: any): Issue {
     startedAt: rowTs(row.started_at),
     closedAt: rowTs(row.closed_at),
     approvedAt: rowTs(row.approved_at),
+    deployedTo: row.deployed_to ?? "none",
   };
 }
 
@@ -118,7 +119,8 @@ export function openProjectDatabase(sqlitePath: string) {
         completed_at INTEGER,
         started_at INTEGER,
         closed_at INTEGER,
-        approved_at INTEGER
+        approved_at INTEGER,
+        deployed_to TEXT DEFAULT 'none'
       );
     `);
     db.exec(`
@@ -160,7 +162,8 @@ export function openProjectDatabase(sqlitePath: string) {
         completed_at INTEGER,
         started_at INTEGER,
         closed_at INTEGER,
-        approved_at INTEGER
+        approved_at INTEGER,
+        deployed_to TEXT DEFAULT 'none'
       );
     `);
   }
@@ -186,6 +189,7 @@ export function openProjectDatabase(sqlitePath: string) {
       ["started_at", "INTEGER"],
       ["closed_at", "INTEGER"],
       ["approved_at", "INTEGER"],
+      ["deployed_to", "TEXT DEFAULT 'none'"],
     ];
     for (const [col, def] of v2Columns) {
       try {
@@ -226,19 +230,29 @@ export function openProjectDatabase(sqlitePath: string) {
     );
   `);
 
+  const hasExecutionRuns = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='execution_runs'`)
+    .get();
+
+  if (hasExecutionRuns) {
+    try {
+      db.prepare(`SELECT run_id FROM execution_runs LIMIT 1`).get();
+    } catch {
+      // Old schema, drop it to recreate
+      db.exec(`DROP TABLE execution_runs`);
+    }
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS execution_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id TEXT NOT NULL,
-      agent_role TEXT NOT NULL,
-      runtime TEXT NOT NULL,
-      session_key TEXT,
-      label TEXT,
-      status TEXT NOT NULL DEFAULT 'running',
-      started_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
-      ended_at INTEGER,
-      error TEXT,
-      commit_hash TEXT
+      run_id TEXT PRIMARY KEY,
+      issue_id TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      environment TEXT NOT NULL,
+      status TEXT NOT NULL,
+      pr_url TEXT,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER
     );
   `);
 
@@ -265,7 +279,7 @@ export function openProjectDatabase(sqlitePath: string) {
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_external ON issues(source_type, source_external_id) WHERE source_external_id IS NOT NULL;`,
   );
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_execution_runs_task_id ON execution_runs(task_id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_execution_runs_issue_id ON execution_runs(issue_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_selfimprove_task_id ON selfimprove(task_id);`);
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_selfimprove_category_applied ON selfimprove(category, applied);`,
@@ -276,11 +290,11 @@ export function openProjectDatabase(sqlitePath: string) {
       INSERT INTO issues (issue_id, title, description, status, severity, complexity, labels, assignee,
                           project_id, batch_id, requires_approval, touches_json,
                           source_type, source_external_id, source_external_url, source_synced_at,
-                          created_at, updated_at, completed_at, started_at, closed_at, approved_at)
+                          created_at, updated_at, completed_at, started_at, closed_at, approved_at, deployed_to)
       VALUES (@issueId, @title, @description, @status, @severity, @complexity, @labels, @assignee,
               @projectId, @batchId, @requiresApproval, @touchesJson,
               @sourceType, @sourceExternalId, @sourceExternalUrl, @sourceSyncedAt,
-              @createdAt, @updatedAt, @completedAt, @startedAt, @closedAt, @approvedAt)
+              @createdAt, @updatedAt, @completedAt, @startedAt, @closedAt, @approvedAt, @deployedTo)
     `),
     getIssue: db.prepare(`SELECT * FROM issues WHERE issue_id = ?`),
     listIssues: db.prepare(`SELECT * FROM issues ORDER BY created_at ASC`),
@@ -308,7 +322,8 @@ export function openProjectDatabase(sqlitePath: string) {
         completed_at = @completedAt,
         started_at = @startedAt,
         closed_at = @closedAt,
-        approved_at = @approvedAt
+        approved_at = @approvedAt,
+        deployed_to = @deployedTo
       WHERE issue_id = @issueId
     `),
     insertDependency: db.prepare(
@@ -355,6 +370,7 @@ export function openProjectDatabase(sqlitePath: string) {
         startedAt: toUnixMs(issue.startedAt) ?? null,
         closedAt: toUnixMs(issue.closedAt) ?? null,
         approvedAt: toUnixMs(issue.approvedAt) ?? null,
+        deployedTo: issue.deployedTo ?? "none",
       });
     },
     getIssue(issueId: string): Issue | undefined {
@@ -395,6 +411,7 @@ export function openProjectDatabase(sqlitePath: string) {
         startedAt: toUnixMs(issue.startedAt) ?? null,
         closedAt: toUnixMs(issue.closedAt) ?? null,
         approvedAt: toUnixMs(issue.approvedAt) ?? null,
+        deployedTo: issue.deployedTo ?? "none",
       });
     },
     // Backward-compatible aliases
@@ -514,6 +531,7 @@ export function openProjectDatabase(sqlitePath: string) {
         startedAt: null,
         closedAt: null,
         approvedAt: null,
+        deployedTo: "none",
       });
     },
     updateTask(taskId: string, updates: Record<string, unknown>) {
@@ -658,6 +676,7 @@ export function openProjectDatabase(sqlitePath: string) {
         startedAt: t.startedAt,
         closedAt: t.closedAt,
         approvedAt: t.approvedAt,
+        deployedTo: t.deployedTo,
       }));
     },
     close() {

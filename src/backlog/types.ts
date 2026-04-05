@@ -28,6 +28,7 @@ export type Issue = {
   batchId: string | null;
   requiresApproval: number; // 0 or 1
   touchesJson: string | null; // JSON array of file paths
+  deployedTo?: string; // e.g. 'none', 'dev', 'prod'
   // Source fields for external issue tracking
   sourceType: "internal" | "github" | "linear" | "jira";
   sourceExternalId: string | null;
@@ -55,18 +56,30 @@ export type BacklogTask = Issue;
 export type BacklogDependency = IssueDependency;
 
 export type ExecutionRun = {
-  id: number;
-  taskId: string;
-  agentRole: string;
-  runtime: string; // subagent, acp, cli
-  sessionKey: string | null;
-  label: string | null; // OpenClaw task label
+  runId: string;
+  issueId: string;
+  agentType: string;
+  environment: string;
   status: string;
+  prUrl?: string;
   startedAt: number; // Unix ms
-  endedAt: number | null;
-  error: string | null;
-  commitHash: string | null;
+  completedAt?: number;
 };
+
+export interface EnvironmentConfig {
+  base_branch: string;
+  agent_engine: string;
+  auto_deploy: boolean;
+  requires_approval_override: boolean;
+  on_success: string;
+  script_path?: string;
+}
+
+export interface ProjectConfig {
+  project_name: string;
+  default_environment: string;
+  environments: Record<string, EnvironmentConfig>;
+}
 
 export type SelfImproveEntry = {
   id: number;

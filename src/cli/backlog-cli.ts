@@ -6,12 +6,15 @@ export function registerIssuesCli(program: Command) {
   cmd
     .command("init")
     .description("Initialize .openclaw/ project directory in current repo")
+    .option("--name <name>", "Project name", "Project")
     .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { initProjectDirectory } = await import("../backlog/db.js");
+      const { initProjectConfig } = await import("../backlog/config.js");
       const repoPath = (opts.path as string) || process.cwd();
       const dbPath = initProjectDirectory(repoPath);
-      console.log(`Initialized project at ${dbPath}`);
+      await initProjectConfig(repoPath, opts.name as string);
+      console.log(`Initialized project at ${dbPath} and created config.json`);
     });
 
   cmd
@@ -25,6 +28,7 @@ export function registerIssuesCli(program: Command) {
     .option("--touches <files>", "Comma-separated files (alias for --labels)")
     .option("--project-id <id>", "Project ID to associate this issue with")
     .option("--requires-approval", "Mark issue as requiring approval before execution", false)
+    .option("--deployed-to <env>", "Deployed to environment (e.g. 'none', 'dev', 'prod')", "none")
     .option("--path <path>", "Repository path (default: cwd)")
     .action(async (opts) => {
       const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
@@ -62,6 +66,7 @@ export function registerIssuesCli(program: Command) {
           startedAt: null,
           closedAt: null,
           approvedAt: null,
+          deployedTo: opts.deployedTo as string,
         });
         console.log(`Added ${issueId}: ${opts.title as string}`);
       } finally {
@@ -94,6 +99,9 @@ export function registerIssuesCli(program: Command) {
           issues = issues.filter(
             (t: { projectId: string | null }) => t.projectId === opts.projectId,
           );
+        }
+        if (opts.deployedTo) {
+          issues = issues.filter((t: { deployedTo?: string }) => t.deployedTo === opts.deployedTo);
         }
 
         if (opts.json) {
@@ -140,6 +148,7 @@ export function registerIssuesCli(program: Command) {
     .option("--assignee <assignee>", "New assignee")
     .option("--project-id <id>", "Set project ID")
     .option("--batch-id <id>", "Set batch ID")
+    .option("--deployed-to <env>", "Set deployed environment")
     .option("--path <path>", "Repository path (default: cwd)")
     .action(async (issueId, opts) => {
       const { openProjectDatabase, resolveProjectSqlitePath } = await import("../backlog/db.js");
@@ -173,6 +182,9 @@ export function registerIssuesCli(program: Command) {
         }
         if (opts.batchId) {
           updates.batchId = opts.batchId as string;
+        }
+        if (opts.deployedTo) {
+          updates.deployedTo = opts.deployedTo as string;
         }
 
         dbInfo.updateTask(issueId as string, updates);
