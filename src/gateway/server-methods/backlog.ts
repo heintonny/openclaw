@@ -13,11 +13,11 @@ function resolveRepoPath(params: Record<string, unknown>): string {
   if (typeof params.projectId === "string" && params.projectId) {
     const registry = openProjectRegistry();
     try {
-      const repos = registry.getProject(params.projectId);
-      if (repos.length === 0) {
+      const projects = registry.getProject(params.projectId);
+      if (projects.length === 0) {
         throw new Error(`Project "${params.projectId}" not found in registry`);
       }
-      return repos[0];
+      return projects[0].repoPath;
     } finally {
       registry.close();
     }

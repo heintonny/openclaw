@@ -94,3 +94,14 @@ export type SelfImproveEntry = {
   applied: boolean;
   createdAt: number; // Unix ms
 };
+
+export type Project = {
+  projectId: string;
+  repoPath: string;
+  displayName: string | null;
+  repoUrl: string | null;
+  sqlitePath: string | null;
+  lastSeenAt: number | null; // Unix ms
+  configJson: string | null; // JSON object stored as string
+  registeredAt: number; // Unix ms
+};
